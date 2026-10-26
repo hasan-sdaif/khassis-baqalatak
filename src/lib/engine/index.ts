@@ -4,7 +4,7 @@
 export { generatePlan, displayName } from './generate'
 export { ENGINE_VERSION, DEFAULT_CONFIG, SEASONAL_FACTORS, MODE_OFFSET, MODE_LABELS, seededRandom } from './config'
 export { NEEDS, NEEDS_MAP, classifyNeed, extractTags, categoryFallbackNeed, categoryLabelAr } from './needs'
-export { normalizeArabic, stripAl, trigramSim, tokenScore, stripEmoji, stableId } from './normalize'
+export { normalizeArabic, stripAl, trigramSim, tokenScore, stripEmoji, stableId, stableFingerprint, catalogFingerprint } from './normalize'
 export { parseSize, formatSize, unitPriceLabel } from './size'
 export {
   medianWeightKg, diaperChangesPerDay, diaperSizeForWeight, formulaStage,
@@ -26,3 +26,5 @@ export type {
   WeightPercents, AllocationPercents, AllocGroupId, LifestylePrefs, StorePrefs, SuggestMode,
 } from './advanced'
 export * from './types'
+
+export { getAllPlanItems, sumPlanItemsFils } from './plan-utils'

@@ -7,9 +7,10 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type {
   Budget, BudgetEnvelope, Household, LockedChoice, PantryItem, PlanResult,
-  SpendLogEntry, PlanMode, ReportNames,
+  SpendLogEntry, PlanMode, ReportNames, PlanContext,
 } from '@/lib/engine/types'
 import { defaultAdvanced, normalizeAdvanced, type AdvancedProfile } from '@/lib/engine/advanced'
+import { dateISOInTimeZone } from '@/lib/time'
 
 export interface AppSettings {
   lang: 'ar' | 'en'
@@ -33,6 +34,8 @@ export interface PriceAlert {
   triggered?: boolean
 }
 
+export type StoredPlanContext = Pick<PlanContext, 'dateISO' | 'season' | 'storeMode' | 'availableStores' | 'delivery'>
+
 interface AppState {
   settings: AppSettings
   household: Household | null
@@ -41,6 +44,7 @@ interface AppState {
   locks: LockedChoice[]
   plan: PlanResult | null
   planMode: PlanMode
+  planContext: StoredPlanContext
   planNames: ReportNames
   pantry: PantryItem[]
   spendLog: SpendLogEntry[]
@@ -58,10 +62,12 @@ interface AppState {
   removeEnvelope: (id: string) => void
   setPlan: (p: PlanResult | null) => void
   setPlanMode: (m: PlanMode) => void
+  setPlanContext: (context: StoredPlanContext) => void
   setPlanNames: (n: ReportNames) => void
   addLock: (l: LockedChoice) => void
   removeLock: (productId: string) => void
   addPantry: (p: PantryItem) => void
+  setPantry: (items: PantryItem[]) => void
   removePantry: (id: string) => void
   addSpend: (s: SpendLogEntry) => void
   clearSpend: () => void
@@ -99,6 +105,7 @@ export const useApp = create<AppState>()(
       locks: [],
       plan: null,
       planMode: 'balanced',
+      planContext: { dateISO: dateISOInTimeZone(), season: 'normal', storeMode: 'median', availableStores: [], delivery: true },
       planNames: { reportName: 'خطة البقالة', showNames: true },
       pantry: [],
       spendLog: [],
@@ -114,10 +121,12 @@ export const useApp = create<AppState>()(
       removeEnvelope: (id) => set((s) => ({ envelopes: s.envelopes.filter((e) => e.id !== id) })),
       setPlan: (p) => set({ plan: p }),
       setPlanMode: (m) => set({ planMode: m }),
+      setPlanContext: (context) => set({ planContext: { ...context, availableStores: [...new Set(context.availableStores)] } }),
       setPlanNames: (n) => set({ planNames: n }),
       addLock: (l) => set((s) => ({ locks: [...s.locks.filter((x) => x.productId !== l.productId), l] })),
       removeLock: (productId) => set((s) => ({ locks: s.locks.filter((x) => x.productId !== productId) })),
       addPantry: (p) => set((s) => ({ pantry: [...s.pantry.filter((x) => x.id !== p.id), p] })),
+      setPantry: (items) => set({ pantry: items }),
       removePantry: (id) => set((s) => ({ pantry: s.pantry.filter((x) => x.id !== id) })),
       addSpend: (sp) => set((s) => ({ spendLog: [...s.spendLog, sp] })),
       clearSpend: () => set({ spendLog: [] }),
@@ -132,6 +141,7 @@ export const useApp = create<AppState>()(
       resetAdvanced: () => set({ advanced: defaultAdvanced() }),
       resetAll: () => set({
         household: null, budget: null, envelopes: [], locks: [], plan: null,
+        planContext: { dateISO: dateISOInTimeZone(), season: 'normal', storeMode: 'median', availableStores: [], delivery: true },
         pantry: [], spendLog: [], alerts: [], favoriteSharedPlans: [], advanced: defaultAdvanced(),
       }),
     }),
@@ -146,6 +156,7 @@ export const useApp = create<AppState>()(
         locks: s.locks,
         plan: s.plan,
         planMode: s.planMode,
+        planContext: s.planContext,
         planNames: s.planNames,
         pantry: s.pantry,
         spendLog: s.spendLog,

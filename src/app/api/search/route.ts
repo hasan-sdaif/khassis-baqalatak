@@ -20,6 +20,8 @@ export async function GET(req: NextRequest) {
     })
     return NextResponse.json(result)
   } catch (err) {
-    return NextResponse.json({ error: 'search_failed', message: String(err) }, { status: 500 })
+    const message = err instanceof Error ? err.message : String(err)
+    if (message.startsWith('invalid_')) return NextResponse.json({ error: message }, { status: 400 })
+    return NextResponse.json({ error: 'search_failed' }, { status: 500 })
   }
 }

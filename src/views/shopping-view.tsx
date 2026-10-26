@@ -12,7 +12,7 @@ import { fetchCatalogMeta, type CatalogMeta } from '@/lib/api-client'
 import { formatBHD, formatNumberAr, parseBHDToFils } from '@/lib/money'
 import { GlassCard, GlassButton, GlassRow, Pill, StatTile, EmptyState, SectionTitle } from '@/components/glass/glass'
 import { CategoryIcon } from '@/components/icons/category-icons'
-import { NEEDS_MAP } from '@/lib/engine'
+import { NEEDS_MAP, getAllPlanItems } from '@/lib/engine'
 import type { PlanItem } from '@/lib/engine/types'
 import { Check, Printer, Store, Truck, ShoppingCart, ChevronDown, ChevronUp, Wallet, Tag } from 'lucide-react'
 
@@ -79,7 +79,7 @@ export function ShoppingView() {
 
   const allItems = useMemo<PlanItem[]>(() => {
     if (!plan) return []
-    return [...plan.items, ...plan.fixedItems, ...plan.envelopes.flatMap((e) => e.items)]
+    return getAllPlanItems(plan)
   }, [plan])
 
   const storeGroups = useMemo(() => {

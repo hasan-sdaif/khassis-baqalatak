@@ -97,6 +97,10 @@ const TARGET_LABELS: Record<string, string> = {
 }
 
 const API_ERRORS: Record<string, string> = {
+  admin_unauthorized: 'مفتاح الإدارة غير صحيح أو مفقود. أدخله في أعلى الصفحة ثم أعد المحاولة.',
+  admin_not_configured: 'لم يُضبط ADMIN_API_KEY على الخادم؛ لا يمكن إدارة قاعدة البيانات في بيئة الإنتاج قبل ضبطه.',
+  import_path_forbidden: 'يُسمح باستيراد الملفات من مجلد data/raw فقط.',
+  import_too_large: 'حجم ملف الاستيراد يتجاوز الحد الأقصى (25 ميجابايت).',
   file_unreadable: 'تعذّر قراءة الملف من المسار المحدد على الخادم',
   invalid_json: 'محتوى غير صالح',
   invalid_json_body: 'المحتوى الملصق ليس JSON صالحاً للصيغة المختارة',
@@ -165,7 +169,12 @@ interface FormState {
 // ------------------------------------------------------------------ helpers
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init)
+  const headers = new Headers(init?.headers)
+  if (url.startsWith('/api/admin/')) {
+    const adminKey = typeof window !== 'undefined' ? window.sessionStorage.getItem('khassis-admin-key') : null
+    if (adminKey) headers.set('x-admin-key', adminKey)
+  }
+  const res = await fetch(url, { ...init, headers })
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { error?: string } | null
     throw new Error(body?.error ?? `فشل الطلب (${res.status})`)
@@ -221,38 +230,18 @@ function collectPrices(form: FormState): Record<string, { fils: number }> {
 
 /** overlay patch for PATCH /api/admin/product/[id] (server merges over base) */
 function overlayPatch(form: FormState): Record<string, unknown> {
-  const nameAr = form.nameAr.trim()
-  const nameEn = form.nameEn.trim()
-  const brand = form.brand.trim()
-  const sizeText = form.sizeText.trim()
-  const size = parseSize(sizeText || null)
   const medianFils = parseBHDToFils(form.medianBHD)
-  const patch: Record<string, unknown> = {
-    nameAr, nameEn,
-    nameNorm: normalizeArabic(`${nameAr} ${nameEn} ${brand}`),
-    brand: brand || null,
-    brandNorm: brand ? normalizeArabic(brand) : null,
+  const prices = collectPrices(form)
+  return {
+    nameAr: form.nameAr.trim(),
+    nameEn: form.nameEn.trim(),
+    brand: form.brand.trim() || null,
     category: form.category || 'pantry-other',
-    sizeText: sizeText || null,
-    size,
+    sizeText: form.sizeText.trim() || null,
     need: form.need.trim() || null,
     medianFils,
+    prices,
   }
-  if (medianFils > 0 && size && size.baseQuantity > 0 && size.unit !== 'pcs') {
-    const per = size.unit === 'ml' || size.unit === 'g' ? 1000 : 1
-    patch.unitPriceFils = Math.round((medianFils * per) / size.baseQuantity)
-  } else {
-    patch.unitPriceFils = null
-  }
-  const prices = collectPrices(form)
-  if (Object.keys(prices).length > 0) {
-    const vals = Object.values(prices).map((x) => x.fils)
-    patch.prices = prices
-    patch.storesCount = vals.length
-    patch.minFils = Math.min(medianFils, ...vals)
-    patch.maxFils = Math.max(medianFils, ...vals)
-  }
-  return patch
 }
 
 /** body for POST /api/admin/products (server computes id/size/need) */
@@ -398,6 +387,11 @@ export function AdminView({ tab }: { tab?: string }) {
   const arabicNumerals = useApp((s) => s.settings.arabicNumerals)
   const userKey = useApp((s) => s.settings.userKey)
   const [active, setActive] = useState<TabKey>(() => tabKeyOf(tab))
+  const [adminKeyInput, setAdminKeyInput] = useState('')
+
+  useEffect(() => {
+    setAdminKeyInput(window.sessionStorage.getItem('khassis-admin-key') ?? '')
+  }, [])
 
   const { stats, loading: statsLoading, error: statsError, reload: reloadStats } = useAdminStats()
 
@@ -412,14 +406,19 @@ export function AdminView({ tab }: { tab?: string }) {
 
   return (
     <div className="space-y-5 pb-6">
-      {/* RBAC notice */}
-      <GlassCard className="p-4 flex items-start gap-3">
+      {/* Server-enforced admin access: the key is kept in sessionStorage only. */}
+      <GlassCard className="p-4 flex flex-col sm:flex-row sm:items-end gap-3">
         <span className="w-10 h-10 rounded-xl glass-thin grid place-items-center text-primary shrink-0">
           <ShieldCheck size={20} strokeWidth={1.75} aria-hidden />
         </span>
-        <div className="text-sm text-muted-foreground leading-relaxed">
-          <span className="font-bold text-foreground block mb-0.5">الصلاحيات</span>
-          هذه اللوحة متاحة محلياً في هذه النسخة التجريبية — في النشر الذاتي تُحمى بواسطة أدوار المالك/المحرر (RBAC) عبر توكن الإدارة.
+        <div className="flex-1 min-w-0">
+          <label htmlFor="admin-api-key" className="font-bold text-foreground block mb-1">مفتاح إدارة الخادم</label>
+          <p className="text-xs text-muted-foreground leading-relaxed mb-2">في النشر العام، اضبط <code>ADMIN_API_KEY</code> في متغيرات البيئة وأدخل القيمة هنا. تحفظ في جلسة المتصفح الحالية فقط، ولا تُرسل إلا إلى مسارات الإدارة.</p>
+          <input id="admin-api-key" type="password" autoComplete="current-password" value={adminKeyInput} onChange={(e) => setAdminKeyInput(e.target.value)} placeholder="مفتاح الإدارة" className={inputCls} dir="ltr" />
+        </div>
+        <div className="flex gap-2">
+          <GlassButton size="md" className="px-4" onClick={() => { if (typeof window !== 'undefined') { const v = adminKeyInput.trim(); if (v) window.sessionStorage.setItem('khassis-admin-key', v); else window.sessionStorage.removeItem('khassis-admin-key'); window.location.reload() } }}>حفظ وتحقق</GlassButton>
+          <GlassButton size="md" className="px-4" onClick={() => { setAdminKeyInput(''); if (typeof window !== 'undefined') { window.sessionStorage.removeItem('khassis-admin-key'); window.location.reload() } }}>مسح</GlassButton>
         </div>
       </GlassCard>
 
@@ -947,12 +946,7 @@ function MedianInline({ product, onSaved, onError }: {
     setSaving(true)
     try {
       await patchJson(`/api/admin/product/${encodeURIComponent(product.id)}`, {
-        actor: 'admin',
-        patch: {
-          medianFils: fils,
-          minFils: Math.min(product.minFils, fils),
-          maxFils: Math.max(product.maxFils, fils),
-        },
+        patch: { medianFils: fils },
       })
       onSaved()
     } catch (e) {
@@ -1096,7 +1090,6 @@ function ProductEditor({ product, meta, arabicNumerals, onSaved, onCancel, onErr
     setSaving(true)
     try {
       await patchJson(`/api/admin/product/${encodeURIComponent(product.id)}`, {
-        actor: 'admin',
         patch: overlayPatch(form),
       })
       onSaved()
@@ -1253,7 +1246,6 @@ function ReviewTab({ arabicNumerals, userKey, onModerated }: {
       await postJson('/api/admin/moderate', {
         id: c.id,
         action,
-        actor: 'admin',
         note: notes[c.id]?.trim() || undefined,
       })
       setItems((xs) => xs.filter((x) => x.id !== c.id))

@@ -8,13 +8,13 @@ import { useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type C
 import { useApp } from '@/store/app-store'
 import { navigate } from '@/lib/router'
 import {
-  fetchSharedPlans, fetchSharedPlan, sharePlan, generatePlanApi,
+  fetchSharedPlans, fetchSharedPlan, sharePlan, generatePlanApi, fetchCatalogMeta,
   fetchContributions, voteContribution, submitContribution,
   type SharedPlanListItem,
 } from '@/lib/api-client'
 import { formatBHD, formatNumberAr, formatDateAr, parseBHDToFils } from '@/lib/money'
 import { membersLabel } from '@/lib/i18n'
-import { NEEDS_MAP } from '@/lib/engine'
+import { getAllPlanItems, NEEDS_MAP } from '@/lib/engine'
 import {
   GlassCard, GlassRow, GlassButton, Pill, StatTile, EmptyState, Spinner,
   SkeletonRows, SectionTitle,
@@ -23,7 +23,8 @@ import {
   Users, Heart, Eye, Share2, Copy, Check, ArrowLeft, Sparkles, Lock, Wheat,
   Package, Coffee, Candy, Wallet, ThumbsUp, ThumbsDown, Send, Info,
 } from 'lucide-react'
-import type { Budget, BudgetEnvelope, Household, LockedChoice, PlanItem, PlanMode, PlanResult } from '@/lib/engine/types'
+import type { Budget, BudgetEnvelope, Household, LockedChoice, PantryItem, PlanItem, PlanMode, PlanResult } from '@/lib/engine/types'
+import type { AdvancedProfile } from '@/lib/engine/advanced'
 
 // GlassButton accepts HTMLAttributes only; widen it with native button attrs
 // (disabled/type) for the async action buttons in this view.
@@ -107,7 +108,11 @@ interface SharedPlanDetail {
     season?: string
     storeMode?: string
     availableStores?: string[]
+    delivery?: boolean
     locks?: LockedChoice[]
+    pantry?: PantryItem[]
+    advanced?: AdvancedProfile
+    dateISO?: string
   }
   plan?: PlanResult
 }
@@ -189,11 +194,24 @@ function SharedPlanDetail({ slug }: { slug: string }) {
         availableStores: detail.input.availableStores ?? [],
         locks: detail.input.locks ?? [],
         envelopes: detail.input.envelopes ?? [],
+        pantry: detail.input.pantry ?? [],
+        advanced: detail.input.advanced,
+        dateISO: detail.input.dateISO,
+        delivery: detail.input.delivery ?? true,
       })
       const store = useApp.getState()
       store.setHousehold(detail.input.household)
       store.setBudget(detail.input.budget)
       store.setEnvelopes(detail.input.envelopes ?? [])
+      store.setPantry(detail.input.pantry ?? [])
+      if (detail.input.advanced) store.setAdvanced(detail.input.advanced)
+      store.setPlanContext({
+        dateISO: detail.input.dateISO ?? store.planContext.dateISO,
+        season: (detail.input.season as typeof store.planContext.season) ?? 'normal',
+        storeMode: (detail.input.storeMode as typeof store.planContext.storeMode) ?? 'median',
+        availableStores: detail.input.availableStores ?? [],
+        delivery: detail.input.delivery ?? true,
+      })
       store.setPlan(plan)
       store.setPlanMode(detail.input.mode ?? 'balanced')
       navigate({ name: 'plan' })
@@ -206,7 +224,7 @@ function SharedPlanDetail({ slug }: { slug: string }) {
 
   const grouped = useMemo(() => {
     if (!detail?.plan) return [] as [string, PlanItem[]][]
-    const all = [...detail.plan.fixedItems, ...detail.plan.items]
+    const all = getAllPlanItems(detail.plan)
     const groups = new Map<string, PlanItem[]>()
     for (const it of all) {
       const cls = classOf(it.needId)
@@ -218,7 +236,7 @@ function SharedPlanDetail({ slug }: { slug: string }) {
 
   const top5 = useMemo(() => {
     if (!detail?.plan) return [] as PlanItem[]
-    return [...detail.plan.items, ...detail.plan.fixedItems]
+    return getAllPlanItems(detail.plan)
       .sort((a, b) => b.costFils - a.costFils)
       .slice(0, 5)
   }, [detail])
@@ -251,7 +269,7 @@ function SharedPlanDetail({ slug }: { slug: string }) {
   const waste = stats.wastePct ?? detail.plan?.totals.wastePct ?? 0
   const members = stats.members ?? detail.input.household?.members?.length ?? 0
   const itemsCount = stats.items
-    ?? ((detail.plan?.items.length ?? 0) + (detail.plan?.fixedItems.length ?? 0) + (detail.plan?.envelopes.length ?? 0))
+    ?? getAllPlanItems(detail.plan).length
 
   return (
     <div className="space-y-6 pt-2 pb-8">
@@ -511,12 +529,16 @@ function ShareYourPlan() {
   const budget = useApp((s) => s.budget)
   const envelopes = useApp((s) => s.envelopes)
   const locks = useApp((s) => s.locks)
+  const pantry = useApp((s) => s.pantry)
+  const advanced = useApp((s) => s.advanced)
+  const planContext = useApp((s) => s.planContext)
   const planMode = useApp((s) => s.planMode)
   const planNames = useApp((s) => s.planNames)
   const defaultNames = useApp((s) => s.settings.defaultNames)
 
   const [title, setTitle] = useState(planNames.reportName || 'خطة بقالة')
   const [anonymous, setAnonymous] = useState(true)
+  const [publishConsent, setPublishConsent] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [sharedSlug, setSharedSlug] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -551,11 +573,13 @@ function ShareYourPlan() {
         budget,
         envelopes,
         mode: planMode,
-        season: 'normal',
-        storeMode: 'median',
-        availableStores: [],
+        ...planContext,
         locks,
+        pantry,
+        advanced,
+        dateISO: planContext.dateISO,
         isAnonymous: anonymous,
+        consentToPublishHousehold: true,
       })
       setSharedSlug(slug)
       // let the user see the success box briefly, then open the shared plan
@@ -583,8 +607,7 @@ function ShareYourPlan() {
       <SectionTitle>شارك خطتك</SectionTitle>
       <GlassCard className="p-5 space-y-4">
         <p className="text-sm text-muted-foreground leading-relaxed">
-          تُنشر مدخلات خطتك (تركيبة الأسرة والميزانية والأظرف) ليعاد توليد النتائج على الخادم —
-          بلا أسماء ولا مفاتيح هوية. الأسرة التي تشبهك قد توفر الكثير بتجربتك.
+          النشر يجعل بيانات حسابك التالية متاحة علناً عبر رابط الخطة: أعمار الأفراد التقريبية، العادات، القيود الغذائية والحساسيات، الميزانية، الأظرف، المخزون والتفضيلات المتقدمة. نحذف أسماء أفراد الأسرة ومعرّفاتهم قبل النشر، ولا ننشر اسم الأسرة أو اسم المعدّ عند اختيار المشاركة المجهولة. لا تنشر بيانات لا ترغب أن يراها أي شخص يملك الرابط.
         </p>
         <div>
           <label htmlFor="share-title" className="block text-sm font-semibold mb-2">عنوان الخطة</label>
@@ -597,6 +620,13 @@ function ShareYourPlan() {
             placeholder="مثال: أسرة من ٥ أفراد برضيع — ٢٢٠ د.ب"
           />
         </div>
+        <label className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-sm leading-relaxed">
+          <input type="checkbox" checked={publishConsent} onChange={(e) => setPublishConsent(e.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-[var(--primary)]" />
+          <span>
+            أوافق صراحةً على نشر بيانات الأسرة والميزانية والعادات والتفضيلات المذكورة أعلاه ضمن الخطة العامة، وأفهم أن إخفاء الاسم لا يجعل هذه البيانات خاصة.
+            {!anonymous ? ' كما أوافق على نشر اسم الأسرة واسم معدّ التقرير إن كانا محفوظين في الإعدادات.' : ''}
+          </span>
+        </label>
         <button
           onClick={() => setAnonymous((v) => !v)}
           aria-pressed={anonymous}
@@ -624,12 +654,13 @@ function ShareYourPlan() {
           </div>
         ) : (
           <div className="flex flex-wrap gap-2">
-            <ActionButton variant="primary" onClick={doShare} disabled={sharing || !title.trim()}>
+            <ActionButton variant="primary" onClick={doShare} disabled={sharing || !title.trim() || !publishConsent}>
               {sharing ? <Spinner className="w-4 h-4" /> : <Share2 size={16} strokeWidth={1.75} aria-hidden />}
               انشر خطتي في المجتمع
             </ActionButton>
           </div>
         )}
+        {!publishConsent && !shareUrl ? <p className="text-xs text-muted-foreground">لن يُرسل أي شيء إلى المجتمع قبل تفعيل الموافقة الصريحة.</p> : null}
         {error ? <div className="text-sm text-destructive" role="alert">تعذر النشر: {error}</div> : null}
       </GlassCard>
     </section>
@@ -656,10 +687,33 @@ function ContributionsSection() {
   const [kind, setKind] = useState('price-update')
   const [note, setNote] = useState('')
   const [productId, setProductId] = useState('')
+  const [storeOptions, setStoreOptions] = useState<{ id: string; nameAr: string }[]>([])
+  const [categoryOptions, setCategoryOptions] = useState<{ id: string; nameAr: string }[]>([])
+  const [selectedStoreId, setSelectedStoreId] = useState('')
+  const [correctedName, setCorrectedName] = useState('')
+  const [newProductName, setNewProductName] = useState('')
+  const [newProductBrand, setNewProductBrand] = useState('')
+  const [newProductSize, setNewProductSize] = useState('')
+  const [newProductCategory, setNewProductCategory] = useState('pantry-other')
+  const [availabilityValue, setAvailabilityValue] = useState<'available' | 'unavailable'>('unavailable')
   const [price, setPrice] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchCatalogMeta().then((meta) => {
+      if (cancelled) return
+      const stores = meta.stores.filter((store) => store.active).map(({ id, nameAr }) => ({ id, nameAr }))
+      setStoreOptions(stores)
+      setSelectedStoreId((current) => current || stores[0]?.id || '')
+      const categories = meta.categories.map(({ id, nameAr }) => ({ id, nameAr }))
+      setCategoryOptions(categories)
+      setNewProductCategory((current) => categories.some((category) => category.id === current) ? current : categories[0]?.id ?? 'pantry-other')
+    }).catch(() => { if (!cancelled) setStoreOptions([]) })
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -694,26 +748,48 @@ function ContributionsSection() {
   }
 
   const submit = async () => {
-    if (!note.trim() && !price.trim() && kind !== 'availability') {
-      setError('اكتب ملاحظة أو سعراً قبل الإرسال.')
+    const amountFils = parseBHDToFils(price.trim())
+    if (kind === 'price-update' && (!productId.trim() || !selectedStoreId || amountFils <= 0)) {
+      setError('لتحديث سعر، أدخل معرّف المنتج والسعر واختر المتجر الذي رُصد فيه السعر.')
       return
     }
+    if (kind === 'name-fix' && (!productId.trim() || !correctedName.trim())) {
+      setError('لتصحيح الاسم، أدخل معرّف المنتج والاسم العربي الصحيح.')
+      return
+    }
+    if (kind === 'availability' && (!productId.trim() || !selectedStoreId)) {
+      setError('لإبلاغ التوفر، أدخل معرّف المنتج واختر المتجر والحالة المرصودة.')
+      return
+    }
+    if (kind === 'new-product' && (!newProductName.trim() || !newProductCategory || !selectedStoreId || amountFils <= 0)) {
+      setError('لإضافة منتج، أدخل اسمه العربي وتصنيفه ومتجراً وسعراً موجباً.')
+      return
+    }
+    if (!note.trim() && !price.trim() && !correctedName.trim() && !newProductName.trim() && kind !== 'availability') {
+      setError('أدخل المعلومات المطلوبة قبل الإرسال.')
+      return
+    }
+    const payload: Record<string, unknown> = { note: note.trim() || undefined }
+    if (kind === 'price-update') Object.assign(payload, { fils: amountFils, storeId: selectedStoreId })
+    if (kind === 'name-fix') Object.assign(payload, { nameAr: correctedName.trim() })
+    if (kind === 'availability') Object.assign(payload, { storeId: selectedStoreId, available: availabilityValue === 'available' })
+    if (kind === 'new-product') Object.assign(payload, {
+      nameAr: newProductName.trim(), category: newProductCategory,
+      brand: newProductBrand.trim() || undefined, sizeText: newProductSize.trim() || undefined,
+      storeId: selectedStoreId, fils: amountFils,
+    })
     setSubmitting(true)
     setError(null)
     try {
-      await submitContribution({
-        kind,
-        productId: productId.trim() || undefined,
-        payload: {
-          note: note.trim() || undefined,
-          ...(kind === 'price-update' && price.trim() ? { fils: parseBHDToFils(price.trim()) } : {}),
-        },
-        submittedBy: userKey,
-      })
+      await submitContribution({ kind, productId: productId.trim() || undefined, payload })
       setSubmitted(true)
       setNote('')
       setPrice('')
       setProductId('')
+      setCorrectedName('')
+      setNewProductName('')
+      setNewProductBrand('')
+      setNewProductSize('')
       setReloadKey((k) => k + 1)
       setTimeout(() => setSubmitted(false), 4000)
     } catch (e) {
@@ -806,9 +882,9 @@ function ContributionsSection() {
             </div>
           </div>
 
-          {kind === 'price-update' ? (
+          {kind === 'price-update' || kind === 'new-product' ? (
             <div>
-              <label htmlFor="contrib-price" className="block text-sm font-semibold mb-2">السعر الصحيح (د.ب)</label>
+              <label htmlFor="contrib-price" className="block text-sm font-semibold mb-2">{kind === 'new-product' ? 'السعر المرصود في المتجر (د.ب)' : 'السعر المرصود الصحيح (د.ب)'}</label>
               <input
                 id="contrib-price"
                 value={price}
@@ -820,9 +896,37 @@ function ContributionsSection() {
             </div>
           ) : null}
 
+          {['price-update', 'availability', 'new-product'].includes(kind) ? (
+            <div>
+              <label htmlFor="contrib-store" className="block text-sm font-semibold mb-2">{kind === 'availability' ? 'المتجر المرصود' : 'المتجر الذي رُصد فيه السعر'}</label>
+              <select id="contrib-store" value={selectedStoreId} onChange={(e) => setSelectedStoreId(e.target.value)} className="w-full min-h-11 rounded-xl glass-thin bg-transparent px-4 text-sm outline-none focus:ring-2 focus:ring-[var(--ring)]">
+                {storeOptions.map((store) => <option key={store.id} value={store.id}>{store.nameAr}</option>)}
+              </select>
+            </div>
+          ) : null}
+          {kind === 'name-fix' ? (
+            <div>
+              <label htmlFor="contrib-corrected-name" className="block text-sm font-semibold mb-2">الاسم العربي الصحيح</label>
+              <input id="contrib-corrected-name" value={correctedName} onChange={(e) => setCorrectedName(e.target.value)} maxLength={1000} className="w-full min-h-11 rounded-xl glass-thin bg-transparent px-4 text-sm outline-none focus:ring-2 focus:ring-[var(--ring)]" />
+            </div>
+          ) : null}
+
+          {kind === 'new-product' ? (
+            <div className="space-y-3 rounded-xl border border-primary/20 p-3">
+              <div><label htmlFor="new-product-name" className="block text-sm font-semibold mb-2">اسم المنتج بالعربية</label><input id="new-product-name" value={newProductName} onChange={(e) => setNewProductName(e.target.value)} maxLength={1000} className="w-full min-h-11 rounded-xl glass-thin bg-transparent px-4 text-sm outline-none focus:ring-2 focus:ring-[var(--ring)]" /></div>
+              <div><label htmlFor="new-product-category" className="block text-sm font-semibold mb-2">التصنيف</label><select id="new-product-category" value={newProductCategory} onChange={(e) => setNewProductCategory(e.target.value)} className="w-full min-h-11 rounded-xl glass-thin bg-transparent px-4 text-sm">{categoryOptions.map((category) => <option key={category.id} value={category.id}>{category.nameAr}</option>)}</select></div>
+              <div><label htmlFor="new-product-brand" className="block text-sm font-semibold mb-2">العلامة التجارية (اختياري)</label><input id="new-product-brand" value={newProductBrand} onChange={(e) => setNewProductBrand(e.target.value)} maxLength={250} className="w-full min-h-11 rounded-xl glass-thin bg-transparent px-4 text-sm" /></div>
+              <div><label htmlFor="new-product-size" className="block text-sm font-semibold mb-2">الحجم/الوزن (اختياري)</label><input id="new-product-size" value={newProductSize} onChange={(e) => setNewProductSize(e.target.value)} maxLength={500} placeholder="مثال: 1.5 لتر أو 900 جم" className="w-full min-h-11 rounded-xl glass-thin bg-transparent px-4 text-sm" /></div>
+            </div>
+          ) : null}
+
+          {kind === 'availability' ? (
+            <div><label htmlFor="contrib-availability" className="block text-sm font-semibold mb-2">الحالة المرصودة</label><select id="contrib-availability" value={availabilityValue} onChange={(e) => setAvailabilityValue(e.target.value as 'available' | 'unavailable')} className="w-full min-h-11 rounded-xl glass-thin bg-transparent px-4 text-sm"><option value="available">متوفر</option><option value="unavailable">غير متوفر</option></select></div>
+          ) : null}
+
           <div>
             <label htmlFor="contrib-product" className="block text-sm font-semibold mb-2">
-              معرّف المنتج <span className="text-muted-foreground font-normal">(اختياري — من صفحة المنتج)</span>
+              معرّف المنتج <span className="text-muted-foreground font-normal">{kind === 'new-product' ? '(يُنشأ تلقائياً بعد المراجعة)' : '(من صفحة المنتج)'}</span>
             </label>
             <input
               id="contrib-product"
@@ -830,6 +934,8 @@ function ContributionsSection() {
               onChange={(e) => setProductId(e.target.value)}
               dir="ltr"
               placeholder="p_xxxxx"
+              required={kind !== 'new-product'}
+              disabled={kind === 'new-product'}
               className="w-full min-h-11 rounded-xl glass-thin bg-transparent px-4 text-sm tabular-nums outline-none focus:ring-2 focus:ring-[var(--ring)]"
             />
           </div>

@@ -13,7 +13,7 @@ import { NEEDS_MAP, categoryFallbackNeed } from './needs'
 import { computeDemand, resolveNeed } from './demand'
 import { infantInfos, adultCount, childCount, formulaStageFromName, adultEquivalent } from './habits'
 import { GENERIC_GROUPS } from './groups'
-import { stableId } from './normalize'
+import { catalogFingerprint, normalizeArabic, stableFingerprint, stableId } from './normalize'
 import {
   ALLOC_GROUPS, DEFAULT_ALLOCATION, TIER_OFFSET, applyWeightsToConfig, dietPrefBoost,
   lifestyleTauW, normalizeAllocation, productBlockedByDiet, tripsPerMonth,
@@ -119,7 +119,8 @@ export function generatePlan(input: EngineInput): PlanResult {
   const context = input.context
   const H = budget.horizonDays
   const rng = seededRandom(input.seed || 1)
-  const generatedAt = new Date().toISOString()
+  // Use the catalog snapshot timestamp, not wall-clock time: equal input must yield equal output.
+  const generatedAt = catalog.generatedAt
 
   // ---------- Stage 1: demand (advanced: need overrides + lifestyle + diet bans)
   const { demand: demandList, fixedSpends, warnings, advancedNotes } = computeDemand(catalog, household, H, context, input.pantry ?? [], adv && advActive ? adv : undefined)
@@ -146,7 +147,7 @@ export function generatePlan(input: EngineInput): PlanResult {
     const variant = atIdx >= 0 ? d.needId.slice(atIdx + 1) : null
     const need = resolveNeed(baseNeedId, byNeed.get(baseNeedId)?.[0]?.category ?? '')
     if (!need) continue
-    let products = byNeed.get(baseNeedId) ?? []
+    let products = (byNeed.get(baseNeedId) ?? []).filter((p) => productMatchesNeed(p, baseNeedId))
     if (!products.length) continue
 
     // variant filtering
@@ -187,7 +188,7 @@ export function generatePlan(input: EngineInput): PlanResult {
       // size-less products can't serve ml/g demands (spec 5.3: they stay out of
       // unit comparison; pcs needs use default pack quantities)
       if (!p.size && (need.baseUnit === 'ml' || need.baseUnit === 'g')) {
-        if (!(p.id in lockMap)) continue
+        if (!lockMap.has(p.id)) continue
       }
       const c = buildCandidate(p, need, d, r, H, config, household, lockMap.get(p.id), context, adv && advActive ? adv : undefined)
       if (c) ctx.candidates.push(c)
@@ -248,7 +249,7 @@ export function generatePlan(input: EngineInput): PlanResult {
     }
     // safety filters (spec 6.7-5)
     ctx.candidates = ctx.candidates.filter((c) => {
-      if (c.product.id in lockMap) return true
+      if (lockMap.has(c.product.id)) return true
       if (ctx.medianUEff != null && c.uEff != null) {
         const ratio = c.uEff / ctx.medianUEff
         if (ratio > config.maxMedianMultiple) return false
@@ -302,7 +303,7 @@ export function generatePlan(input: EngineInput): PlanResult {
 
   // choose base (cheapest acceptable) for each need
   for (const ctx of needCtxs) {
-    const lock = ctx.candidates.find((c) => c.product.id in lockMap)
+    const lock = ctx.candidates.find((c) => lockMap.has(c.product.id))
     if (lock) { ctx.chosen = lock; continue }
     const acceptable = ctx.shortlist.length ? ctx.shortlist : ctx.candidates
     // base = cheapest by uEff/cost with sane coverage
@@ -348,19 +349,20 @@ export function generatePlan(input: EngineInput): PlanResult {
         if (ctx.chosen) { ladderCuts.push(`حذف «${ctx.need.nameAr}» (بند رفاهية) بسبب ضيق الميزانية`); ctx.chosen = null }
       }
       // 3) downgrade regular products: affordable pack (sane unit price, lowest total)
-      for (const ctx of needCtxs.filter((c) => c.need.clazz === 'regular' && c.chosen)) {
+      // user-locked products are never touched here (spec 6.4 lock semantics)
+      for (const ctx of needCtxs.filter((c) => c.need.clazz === 'regular' && c.chosen && !lockMap.has(c.chosen!.product.id))) {
         if (over0() === 0) break
         const cheapest = affordableSwap(ctx)
         if (cheapest && cheapest.costFils < ctx.chosen!.costFils) { ladderCuts.push(`تخفيض «${ctx.need.nameAr}» إلى عبوة أوفر`); ctx.chosen = cheapest }
       }
-      // 4) downgrade essential products: affordable pack
-      for (const ctx of needCtxs.filter((c) => c.need.clazz === 'essential' && c.chosen)) {
+      // 4) downgrade essential products: affordable pack (locks stay intact)
+      for (const ctx of needCtxs.filter((c) => c.need.clazz === 'essential' && c.chosen && !lockMap.has(c.chosen!.product.id))) {
         if (over0() === 0) break
         const cheapest = affordableSwap(ctx)
         if (cheapest && cheapest.costFils < ctx.chosen!.costFils) { ladderCuts.push(`تخفيض «${ctx.need.nameAr}» إلى عبوة أوفر`); ctx.chosen = cheapest }
       }
       // 5) reduce regular quantities (and swap to smaller packs when k=1)
-      for (const ctx of needCtxs.filter((c) => c.need.clazz === 'regular' && c.chosen)) {
+      for (const ctx of needCtxs.filter((c) => c.need.clazz === 'regular' && c.chosen && !lockMap.has(c.chosen!.product.id))) {
         if (over0() === 0) break
         if (ctx.chosen!.k > 1) {
           const drop = Math.max(1, Math.floor(over0() / ctx.chosen!.packPriceFils))
@@ -374,8 +376,8 @@ export function generatePlan(input: EngineInput): PlanResult {
           if (smaller && smaller.costFils < ctx.chosen!.costFils) { ladderCuts.push(`تخفيض «${ctx.need.nameAr}» إلى عبوة أصغر`); ctx.chosen = smaller }
         }
       }
-      // 6) reduce essential quantities (last resort, never below 1 pack)
-      for (const ctx of needCtxs.filter((c) => c.need.clazz === 'essential' && c.chosen)) {
+      // 6) reduce essential quantities (last resort, never below 1 pack; locks never touched)
+      for (const ctx of needCtxs.filter((c) => c.need.clazz === 'essential' && c.chosen && !lockMap.has(c.chosen!.product.id))) {
         if (over0() === 0) break
         if (ctx.chosen!.k > 1) {
           const drop = Math.max(1, Math.floor(over0() / ctx.chosen!.packPriceFils))
@@ -449,6 +451,9 @@ export function generatePlan(input: EngineInput): PlanResult {
     const ups: Upgrade[] = []
     for (const ctx of otherCtxs) {
       if (!ctx.chosen) continue
+      // a user-locked product is the explicit choice for this need: it is never
+      // swapped and its locked quantity is never upgraded (spec 6.4 lock semantics)
+      if (lockMap.has(ctx.chosen.product.id)) continue
       for (const c of ctx.shortlist) {
         if (c === ctx.chosen) continue
         const fromU = optionUtility(ctx, ctx.chosen, achieved)
@@ -506,7 +511,7 @@ export function generatePlan(input: EngineInput): PlanResult {
     let treatFils = needCtxs.filter((c) => c.need.clazz === 'treat').reduce((s, c) => s + (c.chosen?.costFils ?? 0), 0)
     const cap = Math.round(budget.fils * config.treatCapPct)
     if (treatFils > cap) {
-      for (const ctx of needCtxs.filter((c) => c.need.clazz === 'treat').sort((a, b) => (b.chosen?.costFils ?? 0) - (a.chosen?.costFils ?? 0))) {
+      for (const ctx of needCtxs.filter((c) => c.need.clazz === 'treat' && !(c.chosen && lockMap.has(c.chosen.product.id))).sort((a, b) => (b.chosen?.costFils ?? 0) - (a.chosen?.costFils ?? 0))) {
         if (treatFils <= cap) break
         // downgrade to cheapest acceptable or drop
         const cheapest = [...(ctx.shortlist.length ? ctx.shortlist : ctx.candidates)].sort((a, b) => (a.uEff ?? a.costFils) - (b.uEff ?? b.costFils))[0]
@@ -530,13 +535,13 @@ export function generatePlan(input: EngineInput): PlanResult {
       for (const ctx of orderedCtxs) {
         if (ctx.need.clazz === 'mandatory') continue
         if (!ctx.chosen) continue
-        if (ctx.chosen.product.id in lockMap) continue
+        if (lockMap.has(ctx.chosen.product.id)) continue
         const curU = optionUtility(ctx, ctx.chosen, achieved)
         let bestC = ctx.chosen
         let bestU = curU
         const pool = ctx.shortlist.length ? ctx.shortlist : ctx.candidates.slice(0, 8)
         for (const c of pool) {
-          if (c === ctx.chosen || c.product.id in lockMap) continue
+          if (c === ctx.chosen || lockMap.has(c.product.id)) continue
           const dCost = c.costFils - ctx.chosen.costFils
           if (spent() + dCost > target) continue
           const u = optionUtility(ctx, c, achieved)
@@ -559,6 +564,67 @@ export function generatePlan(input: EngineInput): PlanResult {
     }
   }
 
+  // ---------- Final hard-budget reconciliation.
+  // Upgrade/refinement/envelope code is intentionally followed by a final invariant
+  // pass. Optional spend is removed in policy order; mandatory needs and explicit
+  // product locks are never altered. If only protected spend remains over budget,
+  // diagnostics report the unavoidable shortfall rather than hiding it.
+  {
+    const classOrder: NeedDef['clazz'][] = ['treat', 'comfort', 'regular', 'essential']
+    const isLocked = (ctx: NeedCtx) => !!ctx.chosen && (lockMap.has(ctx.chosen.product.id) || ctx.need.clazz === 'mandatory')
+    const lowerEnvelopeLevels = () => {
+      for (const eo of [...envelopeOptions].reverse()) {
+        if (spentBase() <= target) break
+        const currentIndex = envChoice.get(eo.env.id) ?? 0
+        const current = eo.levels[currentIndex]
+        if (!current) continue
+        const requiredMin = eo.env.priority === 'must' ? (eo.env.minFils ?? 0) : 0
+        const eligible = eo.levels
+          .map((level, index) => ({ level, index }))
+          .filter(({ level }) => level.spendFils < current.spendFils && level.spendFils >= requiredMin)
+          .sort((a, b) => a.level.spendFils - b.level.spendFils)
+        const lower = eligible[0]
+        if (lower) {
+          envChoice.set(eo.env.id, lower.index)
+          ladderCuts.push(`تقليص ظرف «${eo.env.name}» إلى ${formatFilsForNote(lower.level.spendFils)} د.ب لحماية سقف الميزانية`)
+        }
+      }
+    }
+    lowerEnvelopeLevels()
+    for (const clazz of classOrder) {
+      if (spentBase() <= target) break
+      const candidates = needCtxs
+        .filter((ctx) => ctx.need.clazz === clazz && ctx.chosen && !isLocked(ctx))
+        .sort((a, b) => (b.chosen?.costFils ?? 0) - (a.chosen?.costFils ?? 0))
+      for (const ctx of candidates) {
+        if (spentBase() <= target) break
+        const current = ctx.chosen
+        if (!current) continue
+        if (current.k > 1 && current.packPriceFils > 0) {
+          const over = spentBase() - target
+          const drop = Math.max(1, Math.ceil(over / current.packPriceFils))
+          const next = withK(current, Math.max(1, current.k - drop), config)
+          if (next.costFils < current.costFils) {
+            ctx.chosen = next
+            ladderCuts.push(`تقليص «${ctx.need.nameAr}» إلى ${next.k} عبوة في المراجعة النهائية للميزانية`)
+          }
+        }
+        if (spentBase() <= target) break
+        const cheaper = (ctx.shortlist.length ? ctx.shortlist : ctx.candidates)
+          .filter((candidate) => candidate.costFils < (ctx.chosen?.costFils ?? current.costFils))
+          .sort((a, b) => a.costFils - b.costFils || (a.uEff ?? Infinity) - (b.uEff ?? Infinity))[0]
+        if (cheaper && spentBase() - (ctx.chosen?.costFils ?? current.costFils) + cheaper.costFils < spentBase()) {
+          ctx.chosen = cheaper
+          ladderCuts.push(`اختيار البديل الأقل تكلفة لـ«${ctx.need.nameAr}» لضبط الميزانية`)
+        }
+        if (spentBase() > target && (clazz === 'treat' || clazz === 'comfort' || clazz === 'regular') && ctx.chosen) {
+          ladderCuts.push(`استبعاد «${ctx.need.nameAr}» اختيارياً بعد نفاد بدائل الضبط`)
+          ctx.chosen = null
+        }
+      }
+    }
+  }
+
   // ---------- assemble plan items
   const items: PlanItem[] = []
   const fixedItems: PlanItem[] = []
@@ -566,7 +632,7 @@ export function generatePlan(input: EngineInput): PlanResult {
   for (const ctx of needCtxs) {
     const c = ctx.chosen
     if (!c) continue
-    const isFixed = ctx.need.clazz === 'mandatory' || c.product.id in lockMap
+    const isFixed = ctx.need.clazz === 'mandatory' || lockMap.has(c.product.id)
     const item = makeItem(ctx, c, isFixed, 1)
     ;(isFixed ? fixedItems : items).push(item)
   }
@@ -585,6 +651,27 @@ export function generatePlan(input: EngineInput): PlanResult {
     })
   }
 
+  // locks that could not be honored are surfaced honestly, never dropped silently
+  // (spec invariant: pinned items are visible; when impossible the reason is stated)
+  {
+    const honored = new Set<string>()
+    for (const ctx of needCtxs) {
+      if (ctx.chosen && lockMap.has(ctx.chosen.product.id)) honored.add(ctx.chosen.product.id)
+    }
+    const byId = new Map(catalog.products.map((p) => [p.id, p] as const))
+    for (const l of input.locks) {
+      if (honored.has(l.productId)) continue
+      const p = byId.get(l.productId)
+      const reason = !p ? 'المنتج غير موجود في الكتالوج'
+        : p.available !== true ? 'المنتج غير متوفر حالياً'
+        : !p.need ? 'المنتج بلا احتياج معرّف'
+        : household.prefs.blockedProducts.includes(p.id) ? 'المنتج محجوب بطلبك'
+        : (p.brandNorm && household.prefs.blockedBrands.some((b) => p.brandNorm!.includes(b))) ? 'علامته محجوبة بطلبك'
+        : `احتياجه (${p.need}) غير مطلوب لهذه الأسرة`
+      warnings.push(`تعذّر تثبيت «${p?.nameAr ?? p?.nameEn ?? l.productId}»: ${reason}`)
+    }
+  }
+
   // envelopes: choose level (respect priority & budget)
   for (const eo of envelopeOptions) {
     const env = eo.env
@@ -601,6 +688,8 @@ export function generatePlan(input: EngineInput): PlanResult {
       const affordable = eo.levels.filter((l) => l.spendFils <= headroom)
       level = (env.priority === 'must' ? affordable[affordable.length - 1] : affordable[0]) ?? eo.levels[0] ?? level
     }
+    const finalLevelIdx = eo.levels.indexOf(level)
+    if (finalLevelIdx >= 0) envChoice.set(env.id, finalLevelIdx)
     const er: EnvelopeResult = {
       envelopeId: env.id, name: env.name, spentFils: level.spendFils,
       minFils: env.minFils, maxFils: env.maxFils,
@@ -650,9 +739,15 @@ export function generatePlan(input: EngineInput): PlanResult {
   const optimistic = items.reduce((s, i) => s + Math.round(i.costFils * 0.92), 0) + fixedItems.reduce((s, i) => s + i.costFils, 0) + envelopeResults.reduce((s, e) => s + Math.round(e.spentFils * 0.92), 0)
   const pessimistic = items.reduce((s, i) => s + Math.round(i.costFils * 1.08), 0) + fixedItems.reduce((s, i) => s + i.costFils, 0) + envelopeResults.reduce((s, e) => s + Math.round(e.spentFils * 1.08), 0)
 
-  const fingerprint = stableId([
-    ENGINE_VERSION, config.version, catalog.version, input.mode,
-    stableId([JSON.stringify({ m: household.members, h: household.habits, b: budget.fils, e: input.envelopes.map((e) => e.id), l: input.locks.map((l) => l.productId), c: [context.season, context.storeMode], a: adv ? [adv.v, adv.enabled, adv.lifestyle, adv.weights, adv.allocation, adv.diet, adv.needOverrides, adv.categoryTiers, adv.stores] : null })]),
+  // Fingerprint every input that can influence a result. Previous versions omitted
+  // diet/prefs, store selection, horizon, most budget fields, and catalog overlays,
+  // causing different plans to appear identical in reports/history.
+  const fingerprint = stableFingerprint([
+    ENGINE_VERSION,
+    catalog.fingerprint ?? catalogFingerprint(catalog),
+    JSON.stringify({ mode: input.mode, household, budget, context, config,
+      locks: input.locks, envelopes: input.envelopes, pantry: input.pantry ?? [],
+      seed: input.seed ?? 1, advanced: adv ?? null }),
   ])
 
   return {
@@ -1074,11 +1169,57 @@ function optimizeStores(items: PlanItem[], fixedItems: PlanItem[], catalog: Cata
   return { storeSplits: splits, savingsVsMedianFils: Math.max(0, medianTotal - totalNow) }
 }
 
+// Conservative semantic guard against source-category contamination. These rules
+// only reject obvious mismatches; ambiguous products remain reviewable in the catalog.
+function productMatchesNeed(product: CatalogProduct, needId: string): boolean {
+  const raw = `${product.nameAr ?? ''} ${product.nameEn ?? ''} ${product.brand ?? ''}`
+  const name = normalizeArabic(raw).toLowerCase()
+  const has = (...patterns: RegExp[]) => patterns.some((pattern) => pattern.test(name))
+  const excludes = (...patterns: RegExp[]) => patterns.some((pattern) => pattern.test(name))
+  switch (needId) {
+    case 'eggs':
+      return has(/\beggs?\b/i, /بيض/) && !excludes(/\beggplant\b/i, /\begg\s*(?:noodle|pasta)\b/i, /\b(?:dessert|custard|cake|mayonnaise|mayo|biscuit|cookie)\b/i, /\bبيض\s*(?:بودرة|مجفف للخبز)\b/)
+    case 'chicken':
+      return has(/\bchicken\b/i, /دجاج/) && !excludes(/\b(?:stock|broth|bouillon|seasoning|flavou?red|noodles?|chips?|crisps?)\b/i, /مرقة|مكعبات|بهارات|شيبس/, /\bvegetarian\b/i)
+    case 'bread':
+      return has(/\b(?:bread|toast|loaf|pita|naan|tortilla|flatbread|bun|roti)\b/i, /خبز|توست|صمون|رقاق|تورتيلا|روتي/) && !excludes(/\b(?:crumbs?|cake|biscuits?|cookies?|crackers?|flour|breaded)\b/i, /كيك|بسكويت|كعك|بقسماط|فتات الخبز/)
+    case 'shampoo':
+      return has(/\bshampoo\b/i, /شامبو/)
+    case 'toothpaste':
+      return has(/\btooth\s*paste\b/i, /معجون\s*(?:ال)?أسنان/) && !excludes(/\b(?:mouthwash|mouth\s*wash|oral rinse)\b/i, /غسول\s*(?:الفم|للفم)/)
+    case 'soap':
+      return has(/\bsoap\b/i, /صابون/, /\bbody\s*wash\b/i, /\bshower\s*gel\b/i, /جل\s*الاستحمام/, /غسول\s*الجسم/) && !excludes(/\b(?:lotion|moisturizer|cream)\b/i, /لوشن|مرطب|كريم/)
+    case 'formula':
+      return has(/\b(?:infant|baby|follow-on|growing\s*up)\s*(?:milk\s*)?formula\b/i, /\bformula\b/i, /\binfant\s+milk\b/i, /\bbaby\s+milk\b/i, /حليب\s*(?:الأطفال|اطفال|للأطفال|للرضع|الرضع|رضع|الرضيع)/) && !excludes(/\b(?:pediasure|pedia\s*sure|ensure|adult\s*nutrition)\b/i, /بيدياشور|إنشور|انشور|مكمل\s*غذائي\s*للبالغين/)
+    case 'diapers':
+      return has(/\bdiapers?\b/i, /حفاض(?:ات|ة)?/) && !excludes(/\badult\b/i, /للبالغين|كبار\s*السن/)
+    case 'baby-wipes':
+      return has(/\b(?:baby\s*)?(?:wet\s*)?wipes?\b/i, /مناديل\s*(?:أطفال|اطفال|مبللة)/)
+    case 'toilet-paper':
+      return has(/\btoilet\s*(?:paper|tissue|rolls?)\b/i, /ورق\s*التواليت/, /مناديل\s*المرحاض/)
+    case 'tissues':
+      return has(/\b(?:facial\s*)?tissues?\b/i, /مناديل\s*(?:ورقية|وجه|جيب)/) && !excludes(/\btoilet\s*(?:paper|tissue|rolls?)\b/i, /ورق\s*التواليت/, /مناديل\s*(?:أطفال|اطفال|مبللة)/)
+    case 'water':
+      return has(/\bwater\b/i, /مياه/, /ماء/) && !excludes(/\b(?:flavou?red|rose|perfume|micellar)\s*water\b/i, /ماء\s*ورد/)
+    case 'rice':
+      return has(/\brice\b/i, /أرز|ارز|رز/) && !excludes(/\b(?:rice\s*flour|rice\s*crackers?|rice\s*cakes?)\b/i, /دقيق\s*الأرز|كعك\s*الأرز/)
+    case 'pulses':
+      return has(/\b(?:lentils?|chickpeas?|chana|beans?|peas?|pulses?)\b/i, /عدس|حمص|فاصوليا|لوبيا|بازلاء|فول/)
+    default:
+      return true
+  }
+}
+
+function formatFilsForNote(fils: number): string {
+  return (fils / 1000).toFixed(3)
+}
+
 // ---------------------------------------------------------------------------
 // diagnostics
 
 function buildDiagnostics(items: PlanItem[], fixedItems: PlanItem[], envelopes: EnvelopeResult[], needCtxs: NeedCtx[], budget: Budget, target: number, warnings: string[], config: AlgorithmConfig, extras?: { allocation?: PlanDiagnostics['allocation']; modeOffsetPct?: number; reserveFils?: number; refinementPasses?: number; refinementGains?: number; advancedNotes?: string[] }): PlanDiagnostics {
-  const allItems = [...items, ...fixedItems, ...envelopes.flatMap((e) => e.items)]
+  const allItems = [...items, ...fixedItems]
+  // Envelope item costs are already represented by each envelope's spentFils; do not count them twice.
   const totalCost = allItems.reduce((s, i) => s + i.costFils, 0) + envelopes.reduce((s, e) => s + e.spentFils, 0)
   const byClass = new Map<string, number>()
   for (const it of [...items, ...fixedItems]) {
@@ -1368,15 +1509,27 @@ function solveEnvelope(
     return { p, s: gauss * 0.5 + pop * 0.3 + clamp(p.storesCount / 10, 0, 1) * 0.2, pi }
   }).sort((a, b) => b.s - a.s || a.p.id.localeCompare(b.p.id))
 
-  const step = Math.max(250, config.envStepFils)
   const levels: { spendFils: number; items: PlanItem[]; utility: number }[] = []
   const maxLevels = 12
-  const cap = env.fillToMax ? maxFils : Math.min(maxFils, Number.isFinite(ceilingFils) ? ceilingFils : maxFils, maxFils)
-  for (let s = minFils; s <= maxFils && levels.length < maxLevels; s += step) {
-    const { items, utility } = assortmentFor(s, scored, env, household, config)
-    if (!items.length && s === minFils) { levels.push({ spendFils: 0, items: [], utility: 0 }); break }
-    levels.push({ spendFils: s, items, utility })
-    if (s >= cap) break
+  const cap = env.fillToMax
+    ? maxFils
+    : Math.max(minFils, Math.min(maxFils, Number.isFinite(ceilingFils) ? ceilingFils : maxFils))
+  // Sample the full requested range, including its exact upper bound. A fixed
+  // 250-fils step and 12-level limit previously stopped early for wide envelopes.
+  const targetBudgets = cap <= minFils
+    ? [minFils]
+    : Array.from({ length: maxLevels }, (_, index) => Math.round(minFils + ((cap - minFils) * index) / (maxLevels - 1)))
+  const uniqueTargets = [...new Set(targetBudgets)]
+  for (const targetBudget of uniqueTargets) {
+    const { items, utility } = assortmentFor(targetBudget, scored, env, household, config)
+    if (!items.length && targetBudget === minFils) {
+      levels.push({ spendFils: 0, items: [], utility: 0 })
+      break
+    }
+    // Bill only concrete line-item prices. The requested envelope ceiling must
+    // never be reported as money spent when the assortment costs something else.
+    const actualSpendFils = items.reduce((sum, item) => sum + item.costFils, 0)
+    levels.push({ spendFils: actualSpendFils, items, utility })
   }
   if (!levels.length) levels.push({ spendFils: 0, items: [], utility: 0 })
 
@@ -1406,7 +1559,6 @@ function assortmentFor(
   const maxItems = variety === 'high' ? 14 : variety === 'low' ? 5 : 9
   const pool = [...scored]
   // deterministic small shuffle within equal scores for variety across regenerations
-  const cheapest = pool.length ? Math.min(...pool.map((x) => x.p.medianFils)) : 0
 
   while (pool.length && items.length < maxItems) {
     // pick best-scoring affordable item respecting brand cap and variety
@@ -1416,7 +1568,7 @@ function assortmentFor(
       const brand = cand.p.brand ?? cand.p.id
       const bc = brandCount.get(brand) ?? 0
       if (bc >= Math.max(1, Math.ceil(maxItems * config.varietyBrandCapPct))) continue
-      if (spent + cand.p.medianFils > spendFils + cheapest) continue // tolerance ≤ cheapest item
+      if (spent + cand.p.medianFils > spendFils) continue
       // size bias
       if (sizeBias === 'small' && cand.p.size && cand.p.size.baseQuantity > 2500) continue
       if (sizeBias === 'large' && cand.p.size && cand.p.size.baseQuantity < 300) continue
@@ -1427,7 +1579,9 @@ function assortmentFor(
     const pick = pool.splice(pickIdx, 1)[0]!
     const qty = sizeBias === 'large' && pick.p.size && pick.p.size.baseQuantity >= 400 ? 2 : 1
     const cost = pick.p.medianFils * qty
-    if (spent + cost > spendFils + cheapest && items.length > 0) break
+    // A large-pack preference can double a candidate after the single-pack check.
+    // Skip that candidate rather than allowing the envelope to exceed its budget.
+    if (spent + cost > spendFils) continue
     spent += cost
     brandCount.set(pick.p.brand ?? pick.p.id, (brandCount.get(pick.p.brand ?? pick.p.id) ?? 0) + 1)
     items.push({

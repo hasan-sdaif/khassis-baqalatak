@@ -111,6 +111,8 @@ export interface CategoryDef {
 }
 
 export interface Catalog {
+  /** Optional runtime content fingerprint, computed after database overlays. */
+  fingerprint?: string
   version: string
   generatedAt: string
   currency: string

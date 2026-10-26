@@ -24,12 +24,13 @@ import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { NEEDS_MAP, categoryFallbackNeed, infantInfos } from '@/lib/engine'
+import { NEEDS_MAP, categoryFallbackNeed, infantInfos, getAllPlanItems, sumPlanItemsFils } from '@/lib/engine'
 import type { InfantInfo } from '@/lib/engine/habits'
 import type {
   Household, PantryItem, PlanItem, PlanResult, ReportNames, ReportOptions, SpendLogEntry,
 } from '@/lib/engine/types'
 import { cn } from '@/lib/utils'
+import { dateISOInTimeZone } from '@/lib/time'
 import {
   ArrowLeftRight, Boxes, Braces, Calculator, CalendarDays, Copy, FileDown, FileText, Layers,
   MessageCircle, Printer, Receipt, RotateCcw, Save, ShoppingBasket, StickyNote, Tag, Trash2,
@@ -45,6 +46,7 @@ type ReportTypeId =
   | 'consumption' | 'product-compare' | 'pantry' | 'calculator'
 
 interface SavedReport {
+  schemaVersion?: 2
   id: string
   type: ReportTypeId
   names: ReportNames
@@ -61,7 +63,7 @@ interface SpendAgg {
 
 interface PantryRow { item: PantryItem; daysLeft: number | null }
 
-/** one printed page: id for keys, title for TOC, node = content */
+/** One deliberate print section. A section may occupy more than one physical sheet in browser printing. */
 interface PageDef { id: string; title: string; node: ReactNode }
 
 /** everything the document builders need */
@@ -229,9 +231,63 @@ function dietaryLine(h: Household): string {
 }
 
 function csvEscape(v: string | number): string {
-  const s = String(v).replace(/\s+/g, ' ').trim()
+  let s = String(v).replace(/\s+/g, ' ').trim()
+  // Prevent spreadsheet formula injection for untrusted text cells. Preserve actual numeric cells.
+  if (typeof v === 'string' && /^[\t\r ]*[=+\-@]/.test(s)) s = `'${s}`
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
+
+const REPORTS_STORAGE_KEY = 'khassis-reports-v2'
+const LEGACY_REPORTS_STORAGE_KEY = 'khassis-reports'
+const MAX_SAVED_REPORTS = 25
+const REPORT_TYPE_IDS: ReportTypeId[] = ['full-plan', 'shopping-list', 'budget', 'spending', 'consumption', 'product-compare', 'pantry', 'calculator']
+
+function parseSavedReports(raw: string | null): SavedReport[] {
+  if (!raw) return []
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((candidate): candidate is SavedReport => {
+      if (!candidate || typeof candidate !== 'object') return false
+      const value = candidate as Partial<SavedReport>
+      return typeof value.id === 'string'
+        && typeof value.type === 'string' && REPORT_TYPE_IDS.includes(value.type as ReportTypeId)
+        && !!value.names && typeof value.names === 'object'
+        && typeof value.names.reportName === 'string'
+        && !!value.options && typeof value.options === 'object'
+        && typeof value.createdAt === 'string'
+        && typeof value.planFingerprint === 'string'
+    }).map((value) => ({
+      ...value,
+      schemaVersion: 2 as const,
+      names: {
+        reportName: String(value.names.reportName || 'تقرير محفوظ').slice(0, 120),
+        familyName: String(value.names.familyName || '').slice(0, 120),
+        preparerName: String(value.names.preparerName || '').slice(0, 120),
+        planName: String(value.names.planName || '').slice(0, 120),
+        showNames: value.names.showNames !== false,
+      },
+      options: {
+        paper: ['A4', 'A5', 'letter', '80mm'].includes(value.options.paper) ? value.options.paper : 'A4',
+        orientation: value.options.orientation === 'landscape' ? 'landscape' as const : 'portrait' as const,
+        inkSaver: value.options.inkSaver === true,
+        detailed: value.options.detailed !== false,
+        hijriOptional: value.options.hijriOptional === true,
+        notesText: String(value.options.notesText || '').slice(0, 4000),
+        sections: value.options.sections && typeof value.options.sections === 'object' ? value.options.sections : {},
+      },
+      createdAt: Number.isNaN(Date.parse(value.createdAt)) ? new Date(0).toISOString() : value.createdAt,
+      planFingerprint: value.planFingerprint.slice(0, 256),
+    })).slice(0, MAX_SAVED_REPORTS)
+  } catch {
+    return []
+  }
+}
+
+function htmlEscape(value: string): string {
+  return value.replace(/[&<>\"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;' })[char] ?? char)
+}
+
 
 function downloadBlob(content: string, mime: string, filename: string): void {
   const blob = new Blob([content], { type: mime })
@@ -247,7 +303,7 @@ function downloadBlob(content: string, mime: string, filename: string): void {
 
 function safeFileName(name: string, ext: string): string {
   const clean = name.replace(/[\\/:*?"<>|#%&{}$!'@+`=:]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').slice(0, 60).replace(/^-+|-+$/g, '')
-  const d = new Date().toISOString().slice(0, 10)
+  const d = dateISOInTimeZone()
   return `${clean || 'تقرير'}_${d}.${ext}`
 }
 
@@ -258,9 +314,13 @@ function chunk<T>(arr: T[], size: number): T[][] {
 }
 
 function pageRuleFor(paper: string, orientation: string): string {
-  if (paper === '80mm') return '@page{size:80mm auto;margin:5mm;}'
+  // Explicit page margins make the on-screen selection correspond to native
+  // print/PDF output instead of relying on browser-specific default margins.
+  // Do not use `size:80mm` here: one length creates an 80×80mm square page, not a roll.
+  // Let the selected printer/PDF target define the physical media; keep the receipt content at 74mm.
+  if (paper === '80mm') return '@page{size:auto;margin:3mm;} @media print{body.printing-report #report-doc[data-paper=\"80mm\"]{width:74mm!important;max-width:74mm!important;} body.printing-report #report-doc[data-paper=\"80mm\"] .print-page{break-after:auto!important;page-break-after:auto!important;}}'
   const size = paper === 'letter' ? 'letter' : paper
-  return `@page{size:${size} ${orientation === 'landscape' ? 'landscape' : 'portrait'};}`
+  return `@page{size:${size} ${orientation === 'landscape' ? 'landscape' : 'portrait'};margin:12mm;}`
 }
 
 /** monochrome basket logo mark (print-safe, green — grayscales in ink-saver) */
@@ -297,50 +357,67 @@ function SegBtn({ active, onClick, ariaLabel, children }: { active: boolean; onC
 // ---------------------------------------------------------------------------
 
 const DOC_CSS = `
-#report-doc{width:210mm;max-width:100%;font-size:13px;}
-#report-doc[data-paper='A5']{width:148mm;font-size:12.5px;}
+#report-doc{box-sizing:border-box;width:210mm;max-width:100%;margin-inline:auto;background:#fff;color:#111;font-family:Arial,"Noto Sans Arabic",sans-serif;font-size:13px;line-height:1.65;direction:rtl;isolation:isolate;}
+#report-doc *{box-sizing:border-box;}
+#report-doc[data-paper='A5']{width:148mm;font-size:11px;}
 #report-doc[data-paper='letter']{width:216mm;}
-#report-doc[data-paper='80mm']{width:80mm;font-size:11px;padding:14px;}
-#report-doc[data-orientation='landscape']{width:297mm;}
+#report-doc[data-paper='80mm']{width:80mm;font-size:10px;padding:4mm!important;}
+#report-doc[data-orientation='landscape']:not([data-paper='80mm']){width:297mm;}
 #report-doc[data-orientation='landscape'][data-paper='A5']{width:210mm;}
 #report-doc[data-orientation='landscape'][data-paper='letter']{width:279mm;}
-#report-doc[data-orientation='landscape'][data-paper='80mm']{width:80mm;}
 #report-doc[data-paper='80mm'] .rdoc-hide-80{display:none!important;}
-#report-doc .rdoc-h2{font-size:16px;font-weight:800;margin:0 0 10px;padding-bottom:4px;border-bottom:2px solid #333;}
-#report-doc .rdoc-h3{font-size:13px;font-weight:700;margin:12px 0 6px;}
-#report-doc .rdoc-p{font-size:12px;line-height:2;margin:0 0 6px;}
+#report-doc .rdoc-h2{font-size:16px;font-weight:800;margin:0 0 10px;padding-bottom:5px;border-bottom:2px solid #333;break-after:avoid;}
+#report-doc .rdoc-h3{font-size:13px;font-weight:700;margin:12px 0 6px;break-after:avoid;}
+#report-doc .rdoc-p{font-size:12px;line-height:1.9;margin:0 0 6px;overflow-wrap:anywhere;}
 #report-doc .rdoc-muted{color:#555;}
-#report-doc .rdoc-table{width:100%;border-collapse:collapse;font-size:12px;line-height:1.7;}
-#report-doc .rdoc-table th,#report-doc .rdoc-table td{border:1px solid #bbb;padding:3px 6px;text-align:right;vertical-align:top;}
-#report-doc .rdoc-table thead th{background:#f0f0ec;font-weight:700;}
+#report-doc .rdoc-table{width:100%;border-collapse:collapse;table-layout:auto;font-size:11px;line-height:1.55;}
+#report-doc .rdoc-table th,#report-doc .rdoc-table td{border:1px solid #aaa;padding:4px 5px;text-align:right;vertical-align:top;overflow-wrap:anywhere;}
+#report-doc .rdoc-table thead th{background:#eee;font-weight:700;}
 #report-doc .rdoc-table .rdoc-sub td{font-weight:700;background:#f7f7f2;}
-#report-doc .rdoc-table .rdoc-grand td{font-weight:800;background:#edede5;border-top:2.5px double #444;}
-#report-doc .rdoc-num{font-variant-numeric:tabular-nums;white-space:nowrap;}
-#report-doc .rdoc-kv{width:100%;border-collapse:collapse;font-size:12px;}
-#report-doc .rdoc-kv th,#report-doc .rdoc-kv td{padding:3px 8px;border-bottom:1px solid #ddd;text-align:right;}
+#report-doc .rdoc-table .rdoc-grand td{font-weight:800;background:#ecece5;border-top:2.5px double #444;}
+#report-doc .rdoc-num{font-variant-numeric:tabular-nums;white-space:nowrap;direction:ltr;unicode-bidi:isolate;}
+#report-doc .rdoc-kv{width:100%;border-collapse:collapse;font-size:11px;}
+#report-doc .rdoc-kv th,#report-doc .rdoc-kv td{padding:4px 7px;border-bottom:1px solid #ddd;text-align:right;overflow-wrap:anywhere;}
 #report-doc .rdoc-kv th{font-weight:700;width:42%;}
-#report-doc .rdoc-footer{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;border-top:1px solid #bbb;margin-top:16px;padding-top:5px;font-size:10px;color:#555;}
+#report-doc .rdoc-footer{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;border-top:1px solid #aaa;margin-top:14px;padding-top:5px;font-size:9px;line-height:1.5;color:#555;}
 #report-doc .rdoc-check{display:inline-block;width:11px;height:11px;border:1.2px solid #444;border-radius:2px;}
 #report-doc .rdoc-sig{display:block;min-width:150px;border-bottom:1px solid #333;height:12px;}
-#report-doc .rdoc-cover-title{font-size:26px;font-weight:800;line-height:1.45;}
-#report-doc .rdoc-bullets{margin:0;padding-inline-start:18px;font-size:12px;line-height:2.1;}
-#report-doc .rdoc-bullets li{margin-bottom:2px;}
-#report-doc[data-paper='80mm'] .rdoc-table{font-size:10.5px;}
-#report-doc[data-paper='80mm'] .rdoc-h2{font-size:14px;}
+#report-doc .rdoc-cover-title{font-size:26px;font-weight:800;line-height:1.4;overflow-wrap:anywhere;}
+#report-doc .rdoc-bullets{margin:0;padding-inline-start:18px;font-size:11px;line-height:1.9;}
+#report-doc .rdoc-bullets li{margin-bottom:2px;break-inside:avoid;}
+#report-doc a{color:inherit;text-decoration:none;}
+#report-doc .print-avoid-break{break-inside:avoid;page-break-inside:avoid;}
+#report-doc[data-paper='A5'] .rdoc-table,#report-doc[data-paper='80mm'] .rdoc-table{font-size:9.5px;}
+#report-doc[data-paper='80mm'] .rdoc-h2{font-size:13px;}
+#report-doc[data-paper='80mm'] .rdoc-h3{font-size:11px;}
 #report-doc[data-paper='80mm'] .rdoc-cover-title{font-size:17px;}
-#report-doc[data-paper='80mm'] .rdoc-footer{font-size:9px;}
+#report-doc[data-paper='80mm'] .rdoc-footer{font-size:8px;}
 #report-doc.ink-saver,#report-doc.ink-saver svg{filter:grayscale(1);}
 @media screen{
+  #report-doc{box-shadow:0 12px 44px rgba(0,0,0,.14);border:1px solid #e4e4e0;}
   #report-doc .print-page+.print-page{margin-top:28px;padding-top:28px;border-top:2px dashed #d9d9d2;}
 }
 @media print{
-  #report-doc{width:auto!important;max-width:none!important;box-shadow:none!important;border-radius:0!important;padding:0!important;font-size:12px;}
-  #report-doc[data-paper='80mm']{font-size:11px;}
-  #report-doc .print-page{margin:0!important;padding:0!important;border-top:none!important;}
-  #report-doc .print-page:last-child{page-break-after:auto;}
-  body.printing-report aside[aria-label='التنقل الرئيسي']{display:none!important;}
-  body.printing-report .shell>div{margin:0!important;}
-  body.printing-report .shell-main{padding:0!important;max-width:none!important;}
+  html,body{width:auto!important;min-width:0!important;margin:0!important;padding:0!important;background:#fff!important;color:#000!important;overflow:visible!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  body.printing-report .shell{display:block!important;min-height:0!important;width:auto!important;}
+  body.printing-report .shell>div{margin:0!important;padding:0!important;max-width:none!important;width:auto!important;display:block!important;}
+  body.printing-report .shell-main{padding:0!important;margin:0!important;max-width:none!important;width:auto!important;}
+  body.printing-report aside[aria-label='التنقل الرئيسي'],body.printing-report nav[aria-label='التنقل السفلي']{display:none!important;}
+  body.printing-report #report-doc{width:auto!important;max-width:none!important;margin:0!important;border:0!important;box-shadow:none!important;border-radius:0!important;padding:0!important;background:#fff!important;color:#000!important;font-size:10pt;overflow:visible!important;}
+  body.printing-report #report-doc[data-paper='80mm']{width:74mm!important;max-width:74mm!important;margin:0!important;font-size:9pt;padding:0!important;}
+  body.printing-report #report-doc[data-paper='80mm'] .print-page{break-after:auto!important;page-break-after:auto!important;}
+  body.printing-report #report-doc .print-page{display:block!important;margin:0!important;padding:0!important;border:0!important;break-after:page;page-break-after:always;overflow:visible!important;}
+  body.printing-report #report-doc .print-page:last-child{break-after:auto;page-break-after:auto;}
+  body.printing-report #report-doc .rdoc-footer{margin-top:8mm;}
+  body.printing-report #report-doc .rdoc-table{width:100%;max-width:100%;font-size:8.5pt;}
+  body.printing-report #report-doc[data-paper='A5'] .rdoc-table{font-size:7.5pt;}
+  body.printing-report #report-doc[data-paper='80mm'] .rdoc-table{font-size:7pt;}
+  body.printing-report #report-doc .rdoc-table thead{display:table-header-group;}
+  body.printing-report #report-doc .rdoc-table tr,body.printing-report #report-doc .rdoc-kv tr,body.printing-report #report-doc .rdoc-footer,body.printing-report #report-doc .rdoc-sig{break-inside:avoid;page-break-inside:avoid;}
+  body.printing-report #report-doc .rdoc-h2,body.printing-report #report-doc .rdoc-h3{break-after:avoid;page-break-after:avoid;}
+  body.printing-report #report-doc img,body.printing-report #report-doc svg{max-width:100%;}
+  body.printing-report .print-avoid-break{break-inside:avoid!important;page-break-inside:avoid!important;}
+  body.printing-report .no-print{display:none!important;}
 }
 `
 
@@ -372,7 +449,7 @@ function buildCover(ctx: DocCtx, tocEntries: { title: string; page: number }[]):
       </table>
       <div className="rdoc-muted text-[11px] mt-4 leading-relaxed max-w-[380px]">
         بصمة الخطة: <span dir="ltr">{plan.fingerprint}</span> — المحرك <span dir="ltr">{plan.engineVersion}</span> — الإعدادات <span dir="ltr">{plan.configVersion}</span>
-        {ctx.catalogInfo ? ` — لقطة الكتالوج <span dir="ltr">${ctx.catalogInfo.version}</span>` : ''}
+        {ctx.catalogInfo ? <> — لقطة الكتالوج <span dir="ltr">{ctx.catalogInfo.version}</span></> : null}
       </div>
       <div className="rdoc-muted text-[11px] mt-1">آخر تحديث للأسعار (تاريخ الكتالوج): {catalogDate}</div>
       <div className="text-[11px] mt-5 border border-[#999] px-3 py-1.5 rounded">الأسعار تقديرية تاريخية — تحقق قبل الشراء</div>
@@ -381,7 +458,7 @@ function buildCover(ctx: DocCtx, tocEntries: { title: string; page: number }[]):
           <div className="rdoc-h3" style={{ marginTop: 0 }}>الفهرس</div>
           <ul className="rdoc-bullets text-start">
             {tocEntries.map((e) => (
-              <li key={`${e.title}-${e.page}`}>{e.title} — صفحة {ctx.num(e.page)}</li>
+              <li key={`${e.title}-${e.page}`}>{e.title} — قسم {ctx.num(e.page)}</li>
             ))}
           </ul>
         </div>
@@ -1523,13 +1600,17 @@ export function ReportsView() {
   const optionsRef = useRef<HTMLDivElement | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // load saved reports (localStorage 'khassis-reports')
+  // Load schema-checked local report templates; migrate the previous storage key once.
   useEffect(() => {
     try {
-      const raw = localStorage.getItem('khassis-reports')
-      if (raw) setSavedReports(JSON.parse(raw) as SavedReport[])
+      const current = localStorage.getItem(REPORTS_STORAGE_KEY)
+      const legacy = current ? null : localStorage.getItem(LEGACY_REPORTS_STORAGE_KEY)
+      const parsed = parseSavedReports(current ?? legacy)
+      setSavedReports(parsed)
+      if (!current && legacy && parsed.length) localStorage.setItem(REPORTS_STORAGE_KEY, JSON.stringify(parsed))
     } catch {
-      /* قائمة التقارير المحفوظة غير قابلة للقراءة — نبدأ بقائمة فارغة */
+      // A full or disabled localStorage must never prevent the reports workspace from opening.
+      setSavedReports([])
     }
   }, [])
 
@@ -1576,8 +1657,10 @@ export function ReportsView() {
   const dateAr = useCallback((iso: string) => formatDateAr(iso), [])
 
   // ----- derived plan data (all totals computed from the items themselves) -----
-  const allItems = useMemo(() => (plan ? [...plan.items, ...plan.fixedItems] : []), [plan])
-  const grandTotalFils = useMemo(() => allItems.reduce((s, it) => s + it.costFils, 0), [allItems])
+  const allItems = useMemo(() => getAllPlanItems(plan), [plan])
+  const listedItemsTotalFils = useMemo(() => sumPlanItemsFils(allItems), [allItems])
+  const grandTotalFils = plan?.totals.costFils ?? listedItemsTotalFils
+  const totalsMismatchFils = grandTotalFils - listedItemsTotalFils
   const classSortedItems = useMemo(() => {
     const order = (c: string) => CLASS_ORDER.indexOf(c)
     return [...allItems].sort((a, b) => {
@@ -1655,7 +1738,7 @@ export function ReportsView() {
   }, [spendLog])
 
   const topOverspend = useMemo(
-    () => [...spendLog].sort((a, b) => (b.actualFils - b.plannedFils) - (a.actualFils - a.plannedFils)).slice(0, 8),
+    () => spendLog.filter((entry) => entry.actualFils > entry.plannedFils).sort((a, b) => (b.actualFils - b.plannedFils) - (a.actualFils - a.plannedFils)).slice(0, 8),
     [spendLog],
   )
 
@@ -1680,7 +1763,7 @@ export function ReportsView() {
     const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
     return `R-${ymd}-${String(d.getTime() % 10000).padStart(4, '0')}`
   }, [])
-  const todayISO = useMemo(() => new Date().toISOString(), [])
+  const todayISO = useMemo(() => dateISOInTimeZone(), [])
   const docDate = dateAr(todayISO)
 
   // ----- assemble the document pages -----
@@ -1792,9 +1875,14 @@ export function ReportsView() {
 
   // ----- actions -----
   const handlePrint = useCallback(() => {
+    if (!docPages.length) {
+      toast('فعّل قسماً واحداً على الأقل قبل الطباعة')
+      return
+    }
     document.body.classList.add('printing-report')
-    window.print()
-  }, [])
+    // Let print-scoped CSS settle before opening the native print dialog.
+    window.requestAnimationFrame(() => window.print())
+  }, [docPages.length, toast])
 
   const typeSections = reportType
     ? Object.fromEntries(TYPE_SECTIONS[reportType].map((id) => [id, sections[id] !== false]))
@@ -1803,6 +1891,7 @@ export function ReportsView() {
   const saveReport = () => {
     if (!plan || !reportType) return
     const entry: SavedReport = {
+      schemaVersion: 2,
       id: `r_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
       type: reportType,
       names: effNames,
@@ -1810,12 +1899,14 @@ export function ReportsView() {
       createdAt: new Date().toISOString(),
       planFingerprint: plan.fingerprint,
     }
-    const next = [entry, ...savedReports]
+    const next = [entry, ...savedReports.filter((item) => item.id !== entry.id)].slice(0, MAX_SAVED_REPORTS)
     setSavedReports(next)
-    try { localStorage.setItem('khassis-reports', JSON.stringify(next)) } catch {
-      /* التخزين المحلي ممتلئ — التقارير المحفوظة قد لا تُحفظ */
+    try {
+      localStorage.setItem(REPORTS_STORAGE_KEY, JSON.stringify(next))
+      toast('حُفظ قالب التقرير — سيُعاد توليده على الخطة الحالية')
+    } catch {
+      toast('تعذّر الحفظ: مساحة التخزين المحلية ممتلئة أو غير متاحة')
     }
-    toast('حُفظ التقرير — أعد توليده متى شئت')
   }
 
   const regenerate = (r: SavedReport) => {
@@ -1835,10 +1926,24 @@ export function ReportsView() {
   const deleteSaved = (id: string) => {
     const next = savedReports.filter((r) => r.id !== id)
     setSavedReports(next)
-    try { localStorage.setItem('khassis-reports', JSON.stringify(next)) } catch {
-      /* تعذّر تحديث التخزين */
+    try { localStorage.setItem(REPORTS_STORAGE_KEY, JSON.stringify(next)) } catch {
+      toast('حُذف من هذه الجلسة، لكن تعذّر تحديث التخزين المحلي')
+      return
     }
-    toast('حُذف التقرير المحفوظ')
+    toast('حُذف قالب التقرير')
+  }
+
+  const clearSavedReports = () => {
+    if (!savedReports.length) return
+    if (!window.confirm('هل تريد حذف جميع قوالب التقارير المحفوظة من هذا الجهاز؟')) return
+    setSavedReports([])
+    try {
+      localStorage.removeItem(REPORTS_STORAGE_KEY)
+      localStorage.removeItem(LEGACY_REPORTS_STORAGE_KEY)
+      toast('حُذفت جميع قوالب التقارير')
+    } catch {
+      toast('حُذفت من هذه الجلسة فقط؛ لم يسمح المتصفح بتحديث التخزين')
+    }
   }
 
   const exportCsv = () => {
@@ -1875,6 +1980,24 @@ export function ReportsView() {
     }
     downloadBlob(JSON.stringify(data, null, 2), 'application/json;charset=utf-8', safeFileName(effNames.reportName, 'json'))
     toast('صُدّر التقرير كاملاً بصيغة JSON')
+  }
+
+  const exportHtml = () => {
+    const source = document.getElementById('report-doc')
+    if (!source || !reportType || !docPages.length) {
+      toast('لا توجد معاينة مكتملة لتصديرها')
+      return
+    }
+    const cssText = Array.from(document.styleSheets).flatMap((sheet) => {
+      try { return Array.from(sheet.cssRules).map((rule) => rule.cssText) } catch { return [] }
+    }).join('\n')
+    const cloned = source.cloneNode(true) as HTMLElement
+    cloned.removeAttribute('class')
+    cloned.classList.add('report-document')
+    const standaloneStyles = `${cssText}\n${DOC_CSS}\n@page{size:${paper === '80mm' ? 'auto' : `${paper} ${orientation}`};margin:${paper === '80mm' ? '3mm' : '12mm'};}\nhtml,body{margin:0;padding:0;background:#fff;color:#111;font-family:Arial,"Noto Sans Arabic",sans-serif;}body{direction:rtl;padding:0;} .report-document{width:auto!important;max-width:none!important;box-shadow:none!important;border:0!important;border-radius:0!important;padding:0!important;margin:0!important;} .print-page{break-after:page;page-break-after:always;margin:0!important;padding:0!important;border:0!important;} .print-page:last-child{break-after:auto;page-break-after:auto;} @media print{#report-doc[data-paper='80mm'] .print-page{break-after:auto;page-break-after:auto;}} .rdoc-table thead{display:table-header-group;} .rdoc-table tr{break-inside:avoid;page-break-inside:avoid;} @media screen{body{background:#f3f4f1;padding:24px;} .report-document{max-width:100%;margin:auto!important;padding:24px!important;background:#fff;box-shadow:0 10px 35px #0002;}}`;
+    const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${htmlEscape(effNames.reportName || TYPE_LABEL[reportType])}</title><style>${standaloneStyles.replace(/<\/style/gi, '<\\/style')}</style></head><body>${cloned.outerHTML}<script>window.addEventListener('load',()=>{document.documentElement.dataset.ready='true'});</script></body></html>`
+    downloadBlob(html, 'text/html;charset=utf-8', safeFileName(effNames.reportName, 'html'))
+    toast('صُدّر تقرير HTML قابل للفتح في المتصفح والطباعة')
   }
 
   const shareWhatsApp = () => {
@@ -1916,10 +2039,13 @@ export function ReportsView() {
 
       {/* saved reports */}
       <section className="no-print" aria-label="التقارير المحفوظة">
-        <SectionTitle>التقارير المحفوظة</SectionTitle>
+        <div className="flex items-center justify-between gap-3">
+          <SectionTitle>قوالب التقارير المحفوظة</SectionTitle>
+          {savedReports.length > 0 ? <GlassButton size="sm" variant="danger" onClick={clearSavedReports}><Trash2 size={14} aria-hidden /> حذف الكل</GlassButton> : null}
+        </div>
         <GlassCard className="p-4 space-y-3">
           {savedReports.length === 0 ? (
-            <p className="text-sm text-muted-foreground">لا توجد تقارير محفوظة — ولّد تقريراً ثم اضغط «احفظ التقرير».</p>
+            <p className="text-sm text-muted-foreground">لا توجد قوالب محفوظة — اضبط التقرير ثم احفظ إعداداته لإعادة استخدامها.</p>
           ) : (
             <div className="space-y-2 max-h-96 overflow-y-auto nice-scroll">
               {savedReports.map((r) => {
@@ -1931,9 +2057,9 @@ export function ReportsView() {
                       <Icon size={18} strokeWidth={1.75} aria-hidden />
                     </span>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold truncate">{r.names.reportName}</div>
+                      <div className="text-sm font-semibold truncate">{r.names.reportName || 'قالب بلا اسم'}</div>
                       <div className="text-[11px] text-muted-foreground truncate">
-                        {TYPE_LABEL[r.type] ?? r.type} — {formatDateAr(r.createdAt)} — بصمة <span dir="ltr">{r.planFingerprint.slice(0, 10)}</span>
+                        {TYPE_LABEL[r.type] ?? r.type} — حُفظ في {formatDateAr(r.createdAt)} — بصمة الخطة <span dir="ltr">{r.planFingerprint.slice(0, 10)}</span>
                       </div>
                     </div>
                     {plan && r.planFingerprint !== plan.fingerprint ? <Pill tone="warn">خطة مختلفة</Pill> : null}
@@ -1952,7 +2078,7 @@ export function ReportsView() {
           )}
           <div className="text-[11px] text-muted-foreground flex items-start gap-2 border-t border-border/60 pt-3">
             <CalendarDays size={14} strokeWidth={1.75} className="shrink-0 mt-0.5" aria-hidden />
-            <span>جدولة شهرية: افتح التقرير في أول الشهر وأعد توليده — نعمل على التذكير التلقائي.</span>
+            <span>هذه القوالب تحفظ الأسماء وإعدادات التقرير فقط، لا نسخة تاريخية من بيانات الخطة. عند إعادة التوليد تُستخدم الخطة الحالية، وتظهر علامة إذا اختلفت بصمتها.</span>
           </div>
         </GlassCard>
       </section>
@@ -2004,7 +2130,7 @@ export function ReportsView() {
               {/* custom names (7.20) */}
               <div>
                 <h3 className="font-bold text-sm mb-1 flex items-center gap-2"><Tag size={15} strokeWidth={1.75} aria-hidden /> الأسماء (تظهر على الغلاف)</h3>
-                <p className="text-[11px] text-muted-foreground mb-3">اترك أي حقل فارغاً لاستخدام الاسم الذكي المقترح تلقائياً.</p>
+                <p className="text-[11px] text-muted-foreground mb-3">اترك أي حقل فارغاً لاستخدام الاسم الذكي المقترح تلقائياً. تُحفظ الإعدادات محلياً على هذا الجهاز.</p>
                 <div className="grid sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label htmlFor="rep-name">اسم التقرير</Label>
@@ -2053,9 +2179,10 @@ export function ReportsView() {
                   <div className="space-y-1.5">
                     <Label>الاتجاه</Label>
                     <div className="flex gap-2" role="radiogroup" aria-label="اتجاه الورق">
-                      <SegBtn active={orientation === 'portrait'} onClick={() => setOrientation('portrait')} ariaLabel="عمودي">عمودي</SegBtn>
+                      <SegBtn active={orientation === 'portrait'} onClick={() => setOrientation('portrait')} ariaLabel="عمودي" >عمودي</SegBtn>
                       <SegBtn active={orientation === 'landscape'} onClick={() => setOrientation('landscape')} ariaLabel="أفقي">أفقي</SegBtn>
                     </div>
+                    {paper === '80mm' ? <p className="text-[11px] text-muted-foreground">عرض المحتوى 74 مم. اختر رول 80 مم في إعدادات الطابعة؛ ارتفاع الإيصال الفعلي يحدده برنامج تشغيل الطابعة، وقد يستخدم حفظ PDF مقاس الوسائط الافتراضي.</p> : null}
                   </div>
                   <div className="space-y-1.5">
                     <Label>النسخة</Label>
@@ -2115,18 +2242,23 @@ export function ReportsView() {
             <div className="no-print flex flex-wrap items-center justify-between gap-2 mb-3">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-lg font-bold tracking-tight">معاينة التقرير</h2>
-                <Pill tone="primary">{docPages.length > 0 ? `${num(docPages.length)} صفحات` : 'بلا أقسام'}</Pill>
+                <Pill tone="primary">{docPages.length > 0 ? `${num(docPages.length)} أقسام` : 'بلا أقسام'}</Pill>
                 <Pill>{detailed ? 'تفصيلية' : 'عامة'}</Pill>
                 <Pill>{paper}{orientation === 'landscape' ? ' — أفقي' : ''}</Pill>
               </div>
-              <GlassButton variant="primary" onClick={handlePrint}>
+              <GlassButton variant="primary" onClick={handlePrint} disabled={docPages.length === 0}>
                 <Printer size={16} strokeWidth={1.75} aria-hidden /> طباعة
               </GlassButton>
             </div>
             <p className="no-print text-[11px] text-muted-foreground flex items-center gap-1.5 mb-3">
               <TriangleAlert size={12} strokeWidth={1.75} aria-hidden />
-              عند الطباعة تُطبع المعاينة فقط — تُخفى خيارات التطبيق والتنقل تلقائياً.
+              عند الطباعة تُطبع المعاينة فقط — تُخفى خيارات التطبيق والتنقل تلقائياً. ترقيم المعاينة هو ترقيم للأقسام المنطقية؛ وقد يقسم المتصفح القسم الطويل على أكثر من ورقة فعلية.
             </p>
+            {totalsMismatchFils !== 0 ? (
+              <div className="no-print mb-3 rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-sm" role="alert">
+                <strong>تعارض في إجمالي البنود:</strong> مجموع البنود المسردة {fmt(listedItemsTotalFils)}، بينما إجمالي المحرك {fmt(grandTotalFils)}؛ الفرق {fmt(totalsMismatchFils)}. لا تعتمد على التصدير قبل مراجعة الخطة.
+              </div>
+            ) : null}
             <div
               id="report-doc"
               data-paper={paper}
@@ -2139,7 +2271,7 @@ export function ReportsView() {
                   {p.node}
                   <div className="rdoc-footer">
                     <span>خصص بقالتك — تقرير {TYPE_LABEL[reportType!]} — {familyLabel} — {docDate} — الأسعار تقديرية</span>
-                    <span className="rdoc-num">صفحة {num(i + 1)} من {num(docPages.length)}</span>
+                    <span className="rdoc-num">قسم {num(i + 1)} من {num(docPages.length)}</span>
                   </div>
                 </div>
               )) : (
@@ -2157,13 +2289,16 @@ export function ReportsView() {
                 <Printer size={16} strokeWidth={1.75} aria-hidden /> طباعة
               </GlassButton>
               <GlassButton onClick={saveReport}>
-                <Save size={16} strokeWidth={1.75} aria-hidden /> احفظ التقرير
+                <Save size={16} strokeWidth={1.75} aria-hidden /> احفظ قالب التقرير
               </GlassButton>
               <GlassButton onClick={exportCsv}>
                 <FileDown size={16} strokeWidth={1.75} aria-hidden /> تصدير CSV
               </GlassButton>
               <GlassButton onClick={exportJson}>
                 <Braces size={16} strokeWidth={1.75} aria-hidden /> تصدير JSON
+              </GlassButton>
+              <GlassButton onClick={exportHtml}>
+                <FileText size={16} strokeWidth={1.75} aria-hidden /> تصدير HTML
               </GlassButton>
               <GlassButton onClick={shareWhatsApp}>
                 <MessageCircle size={16} strokeWidth={1.75} aria-hidden /> واتساب

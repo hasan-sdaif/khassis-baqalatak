@@ -1,16 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { z } from 'zod'
+import { readJsonLimited } from '@/lib/server/request-body'
 
 export const dynamic = 'force-dynamic'
 
 /** POST: vote on a contribution (up/down, one vote per user key) */
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params
-  const body = await req.json().catch(() => ({}))
-  const voterKey = String(body.voterKey ?? 'anon').slice(0, 60)
-  const value = body.value === -1 ? -1 : 1
+  const bodyResult = await readJsonLimited(req, 4 * 1024)
+  if (!bodyResult.ok) return NextResponse.json({ error: bodyResult.error }, { status: bodyResult.status })
+  const schema = z.object({ voterKey: z.string().min(8).max(60), value: z.union([z.literal(1), z.literal(-1)]) })
+  const parsed = schema.safeParse(bodyResult.value)
+  if (!parsed.success) return NextResponse.json({ error: 'invalid_input' }, { status: 400 })
+  const { voterKey, value } = parsed.data
   const contrib = await db.contribution.findUnique({ where: { id } })
   if (!contrib) return NextResponse.json({ error: 'not_found' }, { status: 404 })
+  if (contrib.status !== 'pending') return NextResponse.json({ error: 'already_reviewed' }, { status: 409 })
   const existing = await db.vote.findUnique({ where: { contributionId_voterKey: { contributionId: id, voterKey } } })
   if (existing) {
     if (existing.value === value) return NextResponse.json({ ok: true, votes: contrib.votes })

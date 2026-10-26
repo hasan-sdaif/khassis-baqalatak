@@ -2,6 +2,7 @@
  * Arabic text normalization for search & matching (spec 5.4 / 5.3).
  * Keeps original text for display; normalization is for matching only.
  */
+import type { Catalog } from './types'
 
 const AR_DIACRITICS = /[\u064B-\u065F\u0670\u06D6-\u06ED\u08D3-\u08FF\u0640]/g // harakat + tatweel
 const ZW = /[\u200B-\u200D\uFEFF\u2060]/g // zero-width chars
@@ -104,4 +105,53 @@ export function stableId(parts: (string | number | null | undefined)[]): string 
     h = Math.imul(h, 0x01000193)
   }
   return (h >>> 0).toString(16).padStart(8, '0')
+}
+
+
+/** Wider deterministic fingerprint (two independent 32-bit rolling hashes).
+ * It is a change detector, not a cryptographic signature or security primitive.
+ */
+export function stableFingerprint(parts: (string | number | null | undefined)[]): string {
+  let h1 = 0x811c9dc5
+  let h2 = 0x9747b28c
+  const feed = (value: string) => {
+    for (let i = 0; i < value.length; i++) {
+      const code = value.charCodeAt(i)
+      h1 = Math.imul(h1 ^ code, 0x01000193)
+      h2 = Math.imul(h2 ^ code, 0x5bd1e995)
+      h2 ^= h2 >>> 13
+    }
+  }
+  for (const part of parts) {
+    feed(String(part ?? ''))
+    feed('\u001f')
+  }
+  return `${(h1 >>> 0).toString(16).padStart(8, '0')}${(h2 >>> 0).toString(16).padStart(8, '0')}`
+}
+
+/** Content fingerprint for product/price mutations, including database overlays. */
+export function catalogFingerprint(catalog: Pick<Catalog, 'version' | 'generatedAt' | 'currency' | 'stores' | 'categories' | 'products'>): string {
+  const parts: (string | number | null | undefined)[] = [
+    `version:${catalog.version}`, `generatedAt:${catalog.generatedAt}`, `currency:${catalog.currency}`,
+  ]
+  for (const store of [...catalog.stores].sort((a, b) => a.id.localeCompare(b.id))) {
+    parts.push(JSON.stringify(['store', store.id, store.nameAr, store.nameEn, store.active, store.deliveryFeeFils, store.minOrderFils, store.freeDeliveryThresholdFils]))
+  }
+  for (const category of [...catalog.categories].sort((a, b) => a.id.localeCompare(b.id))) {
+    parts.push(JSON.stringify(['category', category.id, category.nameAr, category.nameEn, category.priority]))
+  }
+  for (const product of [...catalog.products].sort((a, b) => a.id.localeCompare(b.id))) {
+    const prices = Object.keys(product.prices).sort().map((storeId) => {
+      const price = product.prices[storeId]
+      return [storeId, price?.fils ?? null, price?.origFils ?? null, price?.available ?? null]
+    })
+    parts.push(JSON.stringify([
+      product.id, product.category, product.nameAr, product.nameEn, product.brand,
+      product.sizeText, product.size ? [product.size.baseQuantity, product.size.unit, product.size.packCount, product.size.unitSize] : null,
+      product.need, product.available, product.medianFils, product.minFils, product.maxFils,
+      product.unitPriceFils, product.rank, product.storesCount, product.dataConfidence,
+      [...product.tags].sort(), [...product.flavors].sort(), prices,
+    ]))
+  }
+  return stableFingerprint(parts)
 }

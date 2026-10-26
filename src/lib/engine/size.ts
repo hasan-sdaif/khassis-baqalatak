@@ -77,8 +77,8 @@ export function parseSize(rawInput: string | null | undefined): ParsedSize | nul
   const packRe = new RegExp(`(${num})\\s*×\\s*(${num})\\s*(${unitWord})?`)
   const packMatch = s.match(packRe)
   if (packMatch) {
-    const count = parseFloat(packMatch[1].replace(',', '.'))
-    const amount = parseFloat(packMatch[2].replace(',', '.'))
+    const count = parseFloat(packMatch[1]!.replace(',', '.'))
+    const amount = parseFloat(packMatch[2]!.replace(',', '.'))
     const unitTok = packMatch[3] ?? guessUnitFromContext(s)
     const res = buildResult(count * amount, unitTok, count, amount, s, 0.95)
     if (res) return res
@@ -88,9 +88,9 @@ export function parseSize(rawInput: string | null | undefined): ParsedSize | nul
   const unitFirstRe = new RegExp(`(${num})\\s*(${unitWord})\\s*×\\s*(${num})`)
   const uf = s.match(unitFirstRe)
   if (uf) {
-    const amount = parseFloat(uf[1].replace(',', '.'))
-    const unitTok = uf[2]
-    const count = parseFloat(uf[3].replace(',', '.'))
+    const amount = parseFloat(uf[1]!.replace(',', '.'))
+    const unitTok = uf[2]!
+    const count = parseFloat(uf[3]!.replace(',', '.'))
     // only when the first unit is a real volume/mass unit and the count is sane
     const kind = unitKindOf(unitTok)
     if ((kind === 'ml' || kind === 'g') && count >= 2 && count <= 48) {
@@ -114,7 +114,7 @@ export function parseSize(rawInput: string | null | undefined): ParsedSize | nul
   const dozenRe = new RegExp(`(${num})?\\s*(دزينة|دزينه|dozen|dz)`, 'i')
   const dz = s.match(dozenRe)
   if (dz) {
-    const n = dz[1] ? parseFloat(dz[1].replace(',', '.')) : 1
+    const n = dz[1] ? parseFloat(dz[1]!.replace(',', '.')) : 1
     return mk(n * 12, 'pcs', n, 12, `دزينة × 12`, 0.95)
   }
 
@@ -122,8 +122,8 @@ export function parseSize(rawInput: string | null | undefined): ParsedSize | nul
   const simpleRe = new RegExp(`(${num})\\s*(${unitWord})`)
   const sm = s.match(simpleRe)
   if (sm) {
-    const amount = parseFloat(sm[1].replace(',', '.'))
-    const unitTok = sm[2]
+    const amount = parseFloat(sm[1]!.replace(',', '.'))
+    const unitTok = sm[2]!
     const res = buildResult(amount, unitTok, 1, amount, s, 0.9)
     if (res) return res
   }
@@ -131,7 +131,7 @@ export function parseSize(rawInput: string | null | undefined): ParsedSize | nul
   // bare number + implicit pcs (e.g. "64" or "10 pods")
   const bare = s.match(new RegExp(`^(${num})\\s*(${unitWord})?$`))
   if (bare) {
-    const amount = parseFloat(bare[1].replace(',', '.'))
+    const amount = parseFloat(bare[1]!.replace(',', '.'))
     const unitTok = bare[2] ?? guessUnitFromContext(s)
     const res = buildResult(amount, unitTok || 'pcs', 1, amount, s, 0.55)
     if (res) return res
@@ -148,8 +148,8 @@ export function parseSize(rawInput: string | null | undefined): ParsedSize | nul
   // "1+1" promo style => single pack
   const promo = s.match(new RegExp(`(${num})\\s*\\+\\s*(${num})`))
   if (promo) {
-    const a = parseFloat(promo[1].replace(',', '.'))
-    const b = parseFloat(promo[2].replace(',', '.'))
+    const a = parseFloat(promo[1]!.replace(',', '.'))
+    const b = parseFloat(promo[2]!.replace(',', '.'))
     const unitTok = s.replace(promo[0], '').trim()
     const res = buildResult(a + b, unitTok || 'pcs', 1, a + b, s, 0.7)
     if (res) return res
@@ -158,8 +158,8 @@ export function parseSize(rawInput: string | null | undefined): ParsedSize | nul
   // imperial units
   const imperial = s.match(new RegExp(`(${num})\\s*(oz|ounce|lb|lbs|pound|gal|gallon)`, 'i'))
   if (imperial) {
-    const amount = parseFloat(imperial[1].replace(',', '.'))
-    const u = imperial[2].toLowerCase()
+    const amount = parseFloat(imperial[1]!.replace(',', '.'))
+    const u = imperial[2]!.toLowerCase()
     if (u.startsWith('oz')) return mk(amount * OZ_G, 'g', 1, amount, `${amount} oz`, 0.95)
     if (u === 'lb' || u === 'lbs' || u.startsWith('pound')) return mk(amount * LB_G, 'g', 1, amount, `${amount} lb`, 0.95)
     return mk(amount * GAL_ML, 'ml', 1, amount, `${amount} gal`, 0.95)

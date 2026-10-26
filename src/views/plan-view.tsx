@@ -16,7 +16,7 @@ import { FadeIn, StaggerList, StaggerItem, CountUp, AnimatedBar, AnimatedDonut }
 import { CategoryIcon } from '@/components/icons/category-icons'
 import { Lock, Pin, TriangleAlert, ArrowLeftRight, Trash2, Plus, Minus, ChevronDown, ChevronUp, Share2, FileText, HelpCircle, CalendarDays, Sparkles, Gauge, SlidersHorizontal } from 'lucide-react'
 import type { PlanItem, PlanMode, PlanResult } from '@/lib/engine/types'
-import { NEEDS_MAP, categoryFallbackNeed, MODE_LABELS, ALLOC_GROUPS } from '@/lib/engine'
+import { NEEDS_MAP, categoryFallbackNeed, MODE_LABELS, ALLOC_GROUPS, getAllPlanItems } from '@/lib/engine'
 import type { AllocGroupId } from '@/lib/engine'
 
 const MODE_IDS: PlanMode[] = ['crisis', 'economy', 'balanced', 'comfortable', 'custom']
@@ -92,9 +92,7 @@ export function PlanView() {
         household: store.household,
         budget: { ...store.budget, fils: overrides.budgetFils ?? store.budget.fils },
         mode: overrides.mode ?? store.planMode,
-        season: 'normal',
-        storeMode: 'median',
-        availableStores: [],
+        ...store.planContext,
         envelopes: store.envelopes,
         locks: store.locks,
         pantry: store.pantry,
@@ -104,7 +102,7 @@ export function PlanView() {
     } finally {
       setWhatIfLoading(false)
     }
-  }, [store.household, store.budget, store.planMode, store.envelopes, store.locks, store.pantry, store.advanced])
+  }, [store.household, store.budget, store.planMode, store.planContext, store.envelopes, store.locks, store.pantry, store.advanced])
 
   // mode switch
   const switchMode = async (m: PlanMode) => {
@@ -161,25 +159,28 @@ export function PlanView() {
 
   const share = async () => {
     if (!store.household || !store.budget || !plan) return
+    if (typeof window !== 'undefined' && !window.confirm('ستُنشر بيانات الأسرة والعادات والقيود الغذائية والميزانية والمخزون والتفضيلات على رابط عام. لن يُنشر اسم الأسرة أو أسماء الأفراد في هذه المشاركة، لكن تفاصيل الخطة ستبقى مرئية لمن يملك الرابط. هل توافق صراحةً على النشر؟')) return
     setSharing(true)
     try {
       const names = store.planNames
       const { slug } = await sharePlan({
         title: names.reportName || 'خطة بقالة',
-        familyName: names.familyName || undefined,
+        // This one-click path is always anonymous; use the explicit community
+        // form when the user wants to publish a family/preparer name.
+        familyName: undefined,
         authorName: undefined,
         household: store.household,
         budget: store.budget,
         envelopes: store.envelopes,
         mode,
-        season: 'normal',
-        storeMode: 'median',
-        availableStores: [],
+        ...store.planContext,
         locks: store.locks,
+        pantry: store.pantry,
         // advanced profile travels with the share so community regeneration
         // reproduces the exact same plan (modes, diets, weights, offsets)
         advanced: store.advanced,
-        isAnonymous: !names.familyName,
+        isAnonymous: true,
+        consentToPublishHousehold: true,
       })
       setShareUrl(`${window.location.origin}/#/community/${slug}`)
     } catch {
@@ -263,7 +264,7 @@ export function PlanView() {
               value={formatBHD(Math.abs(surplus), { arabicNumerals: ar })}
               tone={surplus >= 0 ? 'default' : 'danger'}
             />
-            <StatTile label="البنود" value={formatNumberAr(items.length + fixedItems.length + envelopes.length, ar)} />
+            <StatTile label="البنود" value={formatNumberAr(getAllPlanItems(activePlan).length, ar)} />
             <StatTile label="الهدر المتوقع" value={`${formatNumberAr(activePlan?.totals.wastePct ?? 0, ar)}٪`} />
             <StatTile label="تغطية الأساسيات" value={`${formatNumberAr(Math.round((activePlan?.totals.coverageEssentials ?? 0) * 100), ar)}٪`} tone={(activePlan?.totals.coverageEssentials ?? 1) < 0.9 ? 'danger' : 'default'} />
           </div>
@@ -355,7 +356,7 @@ export function PlanView() {
                 return (
                   <button key={m.id} onClick={() => switchMode(m.id)} className="glass-row rounded-xl p-2.5 text-start">
                     <div className="font-bold tabular-nums text-sm">{formatBHD(mp.totals.costFils, { arabicNumerals: true, withUnit: false })} د.ب</div>
-                    <div className="text-muted-foreground">{mp.items.length + mp.fixedItems.length} بند · هدر {formatNumberAr(mp.totals.wastePct, true)}٪</div>
+                    <div className="text-muted-foreground">{getAllPlanItems(mp).length} بند · هدر {formatNumberAr(mp.totals.wastePct, true)}٪</div>
                     {m.id === 'balanced' || deltaPct == null ? (
                       <div className="text-[11px] text-primary font-semibold">المرجع للمقارنة</div>
                     ) : (
@@ -400,7 +401,7 @@ export function PlanView() {
             </div>
             {whatIfPlan ? (
               <div className="mt-2 text-xs text-muted-foreground">
-                المعاينة: {whatIfPlan.items.length + whatIfPlan.fixedItems.length} بند بتكلفة {formatBHD(whatIfPlan.totals.costFils)} وتغطية أساسيات {Math.round(whatIfPlan.totals.coverageEssentials * 100)}٪
+                المعاينة: {getAllPlanItems(whatIfPlan).length} بند بتكلفة {formatBHD(whatIfPlan.totals.costFils)} وتغطية أساسيات {Math.round(whatIfPlan.totals.coverageEssentials * 100)}٪
                 <button className="underline text-primary ms-2" onClick={() => { store.setBudget({ ...store.budget!, fils: whatIfBudget! }); store.setPlan(whatIfPlan); setWhatIfBudget(null); setWhatIfPlan(null) }}>
                   اعتمد هذه الميزانية
                 </button>

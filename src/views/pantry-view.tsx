@@ -10,7 +10,7 @@ import { navigate } from '@/lib/router'
 import { generatePlanApi } from '@/lib/api-client'
 import { formatQty, formatDateAr, formatNumberAr } from '@/lib/money'
 import { GlassCard, GlassButton, GlassRow, Pill, EmptyState, SectionTitle, Spinner } from '@/components/glass/glass'
-import { NEEDS, NEEDS_MAP } from '@/lib/engine'
+import { getAllPlanItems, NEEDS, NEEDS_MAP } from '@/lib/engine'
 import type { PantryItem, PlanItem, UnitKind } from '@/lib/engine/types'
 import { Boxes, Plus, Trash2, RefreshCw, Info, Timer, PackagePlus } from 'lucide-react'
 
@@ -93,7 +93,7 @@ export function PantryView() {
     if (!plan) return []
     const pantryNeedIds = new Set(store.pantry.map((p) => p.needId).filter((x): x is string => Boolean(x)))
     const pantryProductIds = new Set(store.pantry.map((p) => p.productId).filter((x): x is string => Boolean(x)))
-    return [...plan.items, ...plan.fixedItems].filter((it) =>
+    return getAllPlanItems(plan).filter((it) =>
       it.unitQtyBase > 0
       && !it.productId.startsWith('manual:')
       && !pantryProductIds.has(it.productId)
@@ -127,12 +127,11 @@ export function PantryView() {
         household: store.household,
         budget: store.budget,
         mode: store.planMode,
-        season: 'normal',
-        storeMode: 'median',
-        availableStores: [],
+        ...store.planContext,
         envelopes: store.envelopes,
         locks: store.locks,
         pantry: store.pantry,
+        advanced: store.advanced,
       })
       store.setPlan(p)
       navigate({ name: 'plan' })

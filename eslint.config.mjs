@@ -44,7 +44,14 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
     "no-useless-escape": "off",
   },
 }, {
-  ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts"]
+  ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", ".test-build/**"]
+}, {
+  // CommonJS test/build scripts (*.cjs) are require()-based by design; the
+  // no-require-imports rule only makes sense for ES modules.
+  files: ["**/*.cjs"],
+  rules: {
+    "@typescript-eslint/no-require-imports": "off",
+  },
 }];
 
 export default eslintConfig;

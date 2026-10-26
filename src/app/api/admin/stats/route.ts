@@ -1,11 +1,14 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/server/admin-auth'
 import { db } from '@/lib/db'
 import { getCatalog } from '@/lib/server/catalog'
 
 export const dynamic = 'force-dynamic'
 
 /** admin dashboard stats (spec 8.2) */
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const authError = requireAdmin(req)
+  if (authError) return authError
   const catalog = await getCatalog()
   const [contribPending, contribTotal, imports, sharedCount, auditCount] = await Promise.all([
     db.contribution.count({ where: { status: 'pending' } }),

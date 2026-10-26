@@ -1,7 +1,8 @@
 import 'server-only'
 import { readFileSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 import { db } from '@/lib/db'
-import { normalizeArabic, stableId } from '@/lib/engine/normalize'
+import { catalogFingerprint, normalizeArabic, stableId } from '@/lib/engine/normalize'
 import type { Catalog, CatalogProduct } from '@/lib/engine/types'
 
 /**
@@ -22,7 +23,7 @@ interface CatalogCache {
 
 const g = globalThis as unknown as { __khassisCatalog?: CatalogCache }
 
-const CATALOG_PATH = 'data/curated/catalog.json'
+const CATALOG_PATH = join(process.cwd(), 'data', 'curated', 'catalog.json')
 
 async function loadCatalog(): Promise<CatalogCache> {
   const mtimeMs = statSync(CATALOG_PATH).mtimeMs
@@ -67,6 +68,8 @@ async function loadCatalog(): Promise<CatalogCache> {
     raw.products = [...byId.values()]
   } catch { /* serve base catalog */ }
 
+  // Include the effective overlay state so report fingerprints change after edits.
+  raw.fingerprint = catalogFingerprint(raw)
   const cache: CatalogCache = { catalog: raw, byId, loadedAt: Date.now(), mtimeMs, rev }
   g.__khassisCatalog = cache
   return cache
@@ -100,6 +103,16 @@ export interface SearchResult {
 }
 
 export async function searchProducts(params: SearchParams): Promise<SearchResult> {
+  const validSorts = new Set<SearchParams['sort']>(['relevance', 'price-asc', 'price-desc', 'unit-asc', 'popularity'])
+  const minFils = params.minFils
+  const maxFils = params.maxFils
+  if ((minFils != null && (!Number.isFinite(minFils) || minFils < 0)) || (maxFils != null && (!Number.isFinite(maxFils) || maxFils < 0))) {
+    throw new Error('invalid_price_filter')
+  }
+  if (minFils != null && maxFils != null && minFils > maxFils) throw new Error('invalid_price_range')
+  if (params.sort != null && !validSorts.has(params.sort)) throw new Error('invalid_sort')
+  const limit = Number.isFinite(params.limit) ? Math.max(1, Math.min(100, Math.floor(params.limit!))) : 30
+  const offset = Number.isFinite(params.offset) ? Math.max(0, Math.min(1_000_000, Math.floor(params.offset!))) : 0
   const c = await loadCatalog()
   const q = params.q?.trim() ?? ''
   const qNorm = normalizeArabic(q)
@@ -148,8 +161,6 @@ export async function searchProducts(params: SearchParams): Promise<SearchResult
   }
 
   const total = scored.length
-  const offset = params.offset ?? 0
-  const limit = Math.min(params.limit ?? 30, 100)
   return { total, items: scored.slice(offset, offset + limit).map((x) => x.p) }
 }
 

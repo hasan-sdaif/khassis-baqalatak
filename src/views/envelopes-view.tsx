@@ -405,9 +405,8 @@ export function EnvelopesView() {
         mode: store.planMode,
         locks: store.locks,
         pantry: store.pantry,
-        season: 'normal',
-        storeMode: 'median',
-        availableStores: [],
+        advanced: store.advanced,
+        ...store.planContext,
       })
       store.setEnvelopes(envelopes)
       store.setPlan(plan)

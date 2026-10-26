@@ -24,3 +24,6 @@ db/*.db-journal
 .DS_Store
 *.pem
 .vercel
+
+# generated isolated engine-test build
+.test-build/

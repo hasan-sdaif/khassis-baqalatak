@@ -6,6 +6,7 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import { useApp } from '@/store/app-store'
+import { getAllPlanItems } from '@/lib/engine'
 import { navigate } from '@/lib/router'
 import { generatePlanApi } from '@/lib/api-client'
 import { formatBHD, formatNumberAr } from '@/lib/money'
@@ -72,7 +73,8 @@ export function HomeView() {
     return () => { cancelled = true; clearTimeout(timer) }
   }, [body])
 
-  const topItems = plan ? [...plan.items, ...plan.fixedItems].sort((a, b) => b.costFils - a.costFils).slice(0, 5) : []
+  const topItems = plan ? getAllPlanItems(plan).sort((a, b) => b.costFils - a.costFils).slice(0, 5) : []
+  const allPlanItemCount = plan ? getAllPlanItems(plan).length : 0
   const surplus = plan ? plan.diagnostics.targetFils - plan.totals.costFils : 0
 
   return (
@@ -155,7 +157,7 @@ export function HomeView() {
               <div className="space-y-3" aria-live="polite">
                 <div className="flex flex-wrap gap-2">
                   <StatTile label="التكلفة المتوقعة" value={formatBHD(plan.totals.costFils, { arabicNumerals })} tone="primary" hint={`نطاق ${formatBHD(plan.totals.optimisticFils, { arabicNumerals, withUnit: false })} – ${formatBHD(plan.totals.pessimisticFils, { arabicNumerals, withUnit: false })}`} />
-                  <StatTile label="عدد البنود" value={formatNumberAr(plan.items.length + plan.fixedItems.length, arabicNumerals)} />
+                  <StatTile label="عدد البنود" value={formatNumberAr(allPlanItemCount, arabicNumerals)} />
                   <StatTile label="الهدر المتوقع" value={`${formatNumberAr(plan.totals.wastePct, arabicNumerals)}٪`} />
                   <StatTile
                     label={surplus >= 0 ? 'الوفر المتوقع' : 'العجز'}

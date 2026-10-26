@@ -3,6 +3,26 @@
 
 import type { CatalogProduct, PlanResult } from '@/lib/engine/types'
 
+const API_ERROR_LABELS: Record<string, string> = {
+  unknown_or_inactive_store: 'أحد المتاجر المختارة لم يعد متاحاً. حدّث قائمة المتاجر ثم أعد المحاولة.',
+  unknown_locked_product: 'أحد المنتجات المثبّتة لم يعد موجوداً في الكتالوج. أزل البند القديم ثم أعد توليد الخطة.',
+  invalid_input: 'بعض المدخلات غير صالحة. راجع الحقول ثم أعد المحاولة.',
+  request_too_large: 'حجم الطلب أكبر من المسموح به.',
+  rate_limited: 'وصلت إلى حدّ المساهمات المؤقت. حاول مرة أخرى لاحقاً.',
+  already_reviewed: 'هذه المساهمة سبق أن تمت مراجعتها.',
+  possible_duplicate_product: 'يبدو أن المنتج موجود بالفعل في الكتالوج. تحقق من المنتج الموجود قبل إعادة الإرسال.',
+}
+
+async function responseError(res: Response, fallback: string): Promise<Error> {
+  const data: unknown = await res.json().catch(() => ({}))
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    const record = data as Record<string, unknown>
+    if (typeof record.message === 'string' && record.message.trim()) return new Error(record.message)
+    if (typeof record.error === 'string' && API_ERROR_LABELS[record.error]) return new Error(API_ERROR_LABELS[record.error])
+  }
+  return new Error(fallback)
+}
+
 export interface CatalogMeta {
   version: string
   generatedAt: string
@@ -60,6 +80,7 @@ export interface PlanRequest {
   envelopes?: unknown[]
   pantry?: unknown[]
   seed?: number
+  dateISO?: string
   /** advanced preferences profile (hundreds-of-options layer) */
   advanced?: unknown
 }
@@ -70,10 +91,7 @@ export async function generatePlanApi(req: PlanRequest): Promise<{ plan: PlanRes
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(req),
   })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err.message ?? 'plan generation failed')
-  }
+  if (!res.ok) throw await responseError(res, 'تعذر توليد الخطة. تحقق من اتصالك ومدخلاتك ثم أعد المحاولة.')
   return res.json()
 }
 
@@ -107,7 +125,7 @@ export async function sharePlan(body: Record<string, unknown>): Promise<{ id: st
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error('share failed')
+  if (!res.ok) throw await responseError(res, 'تعذر نشر الخطة. راجع الموافقة والبيانات ثم أعد المحاولة.')
   return res.json()
 }
 
@@ -117,22 +135,24 @@ export async function submitContribution(body: Record<string, unknown>): Promise
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error('contribute failed')
+  if (!res.ok) throw await responseError(res, 'تعذر إرسال المساهمة. راجع البيانات ثم أعد المحاولة.')
   return res.json()
 }
 
 export async function fetchContributions(status = 'pending'): Promise<{ items: { id: string; kind: string; productId?: string; payload: Record<string, unknown>; votes: number; createdAt: string }[] }> {
-  const res = await fetch(`/api/contribute?status=${status}`)
-  if (!res.ok) throw new Error('contributions failed')
+  const query = new URLSearchParams({ status })
+  const res = await fetch(`/api/contribute?${query.toString()}`)
+  if (!res.ok) throw await responseError(res, 'تعذر تحميل قائمة المساهمات.')
   return res.json()
 }
 
 export async function voteContribution(id: string, voterKey: string, value: 1 | -1): Promise<void> {
-  await fetch(`/api/contribute/${encodeURIComponent(id)}/vote`, {
+  const res = await fetch(`/api/contribute/${encodeURIComponent(id)}/vote`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ voterKey, value }),
   })
+  if (!res.ok) throw await responseError(res, 'تعذر تسجيل التصويت.')
 }
 
 export interface IndexResponse {

@@ -7,6 +7,7 @@ import { useMemo, useState } from 'react'
 import { useApp } from '@/store/app-store'
 import { navigate } from '@/lib/router'
 import { generatePlanApi } from '@/lib/api-client'
+import { dateISOInTimeZone } from '@/lib/time'
 import { formatBHD, parseBHDToFils } from '@/lib/money'
 import { GlassCard, GlassButton, Pill, Spinner, SectionTitle } from '@/components/glass/glass'
 import { Users, Baby, Coffee, Wallet, Store, SlidersHorizontal, Sparkles, ArrowRight, ArrowLeft, Plus, Trash2, CheckCircle2, Languages, Lightbulb, Layers, Percent, Banknote, Info } from 'lucide-react'
@@ -241,14 +242,16 @@ export function WizardView() {
       .filter((t) => envelopeSelection.includes(t.groupId))
       .map((t) => ({ id: `env-${t.groupId}`, name: t.nameAr, groups: [t.groupId], mode: 'range' as const, minFils: t.min, maxFils: t.max, priority: t.priority, fillToMax: false }))
     try {
+      const dateISO = dateISOInTimeZone()
       const { plan } = await generatePlanApi({
         household, budget, mode: planMode, season: 'normal', storeMode,
         availableStores, envelopes, locks: [], pantry: store.pantry ?? [],
-        advanced,
+        advanced, dateISO,
       })
       store.setHousehold(household)
       store.setBudget(budget)
       store.setEnvelopes(envelopes)
+      store.setPlanContext({ dateISO, season: 'normal', storeMode, availableStores, delivery: true })
       store.setPlan(plan)
       store.setPlanNames({ reportName: planName || `خطة ${new Date().toLocaleDateString('ar-BH', { month: 'long', year: 'numeric' })}`, familyName, showNames: true })
       navigate({ name: 'plan' })

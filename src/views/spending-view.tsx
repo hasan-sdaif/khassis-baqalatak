@@ -9,7 +9,7 @@ import { useApp } from '@/store/app-store'
 import { navigate } from '@/lib/router'
 import { formatBHD, formatNumberAr, formatPct } from '@/lib/money'
 import { GlassCard, GlassButton, GlassRow, Pill, StatTile, EmptyState, SectionTitle } from '@/components/glass/glass'
-import { NEEDS_MAP } from '@/lib/engine'
+import { getAllPlanItems, NEEDS_MAP } from '@/lib/engine'
 import type { SpendLogEntry } from '@/lib/engine/types'
 import { Wallet, TrendingUp, TrendingDown, FileDown, FileJson, Trash2, BarChart3, Receipt, ShoppingCart, Tags } from 'lucide-react'
 
@@ -117,7 +117,7 @@ export function SpendingView() {
   const classTotals = useMemo(() => {
     if (!plan) return []
     const byKey = new Map<string, string>()
-    for (const it of [...plan.items, ...plan.fixedItems, ...plan.envelopes.flatMap((e) => e.items)]) {
+    for (const it of getAllPlanItems(plan)) {
       byKey.set(it.key, it.needId)
     }
     const totals = new Map<string, number>()
