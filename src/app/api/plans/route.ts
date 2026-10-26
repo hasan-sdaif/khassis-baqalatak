@@ -7,6 +7,7 @@ import { normalizeAdvanced } from '@/lib/engine/advanced'
 import type { BudgetEnvelope, EngineInput, Household, PantryItem } from '@/lib/engine/types'
 import { PlanShareSchema } from '@/lib/validation/plan-input'
 import { readJsonLimited } from '@/lib/server/request-body'
+import { rateLimit } from '@/lib/server/rate-limit'
 import { dateISOInTimeZone } from '@/lib/time'
 
 export const dynamic = 'force-dynamic'
@@ -22,6 +23,8 @@ function safeStats(raw: string | null): Record<string, unknown> {
 
 /** GET: public gallery. Corrupt historical rows are isolated rather than breaking the whole gallery. */
 export async function GET(req: NextRequest) {
+  const limited = rateLimit(req, 'gallery', 60, 60_000)
+  if (limited) return limited
   const sp = req.nextUrl.searchParams
   const sort = sp.get('sort') === 'likes' ? 'likes' : 'recent'
   const requested = Number.parseInt(sp.get('limit') ?? '24', 10)
@@ -47,6 +50,8 @@ export async function GET(req: NextRequest) {
 
 /** POST: publish only after an explicit, validated household-data consent. */
 export async function POST(req: NextRequest) {
+  const limited = rateLimit(req, 'share', 6, 60_000)
+  if (limited) return limited
   const body = await readJsonLimited(req, 512 * 1024)
   if (!body.ok) return NextResponse.json({ error: body.error }, { status: body.status })
   const parsed = PlanShareSchema.safeParse(body.value)

@@ -5,12 +5,15 @@ import type { BudgetEnvelope, EngineInput, Household, LockedChoice, PantryItem, 
 import { normalizeAdvanced } from '@/lib/engine/advanced'
 import { PlanBodySchema } from '@/lib/validation/plan-input'
 import { readJsonLimited } from '@/lib/server/request-body'
+import { rateLimit } from '@/lib/server/rate-limit'
 import { dateISOInTimeZone } from '@/lib/time'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
 export async function POST(req: NextRequest) {
+  const limited = rateLimit(req, 'plan', 60, 60_000)
+  if (limited) return limited
   const bodyResult = await readJsonLimited(req, 512 * 1024)
   if (!bodyResult.ok) return NextResponse.json({ error: bodyResult.error }, { status: bodyResult.status })
   const body = bodyResult.value

@@ -15,7 +15,8 @@
     "db:reset": "prisma migrate reset",
     "test": "node scripts/test-engine.cjs",
     "typecheck": "tsc --noEmit",
-    "verify": "npm run test && npm run lint && npm run typecheck && npm run build"
+    "verify": "npm run test && npm run lint && npm run typecheck && npm run build",
+    "test:api": "node scripts/test-api.cjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

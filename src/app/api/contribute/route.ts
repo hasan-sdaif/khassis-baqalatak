@@ -1,7 +1,9 @@
+import { createHash } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { readJsonLimited } from '@/lib/server/request-body'
+import { clientIp, rateLimit } from '@/lib/server/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,11 +14,12 @@ const ContributeSchema = z.object({
     if (Object.keys(value).length > 100) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'too_many_payload_fields' })
   }),
   note: z.string().max(500).optional(),
-  submittedBy: z.string().max(120).optional(),
 })
 
-/** Public GET exposes only the public pending queue, never internal review notes or other statuses. */
+/** GET: public pending queue — no internal review notes, no submitter identity. */
 export async function GET(req: NextRequest) {
+  const limited = rateLimit(req, 'contrib-queue', 60, 60_000)
+  if (limited) return limited
   const requestedStatus = req.nextUrl.searchParams.get('status') ?? 'pending'
   if (requestedStatus !== 'pending') {
     return NextResponse.json({ error: 'unsupported_status' }, { status: 400 })
@@ -43,8 +46,11 @@ export async function GET(req: NextRequest) {
   })
 }
 
-/** POST: submit a contribution (no account required for simple fixes; rate-limited) */
+/** POST: submit a contribution (no account required; rate-limited per client). */
 export async function POST(req: NextRequest) {
+  // Burst protection (per process) + durable per-day quota below.
+  const limited = rateLimit(req, 'contribute', 6, 60_000)
+  if (limited) return limited
   const body = await readJsonLimited(req, 32 * 1024)
   if (!body.ok) return NextResponse.json({ error: body.error }, { status: body.status })
   const parsed = ContributeSchema.safeParse(body.value)
@@ -52,11 +58,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'invalid_input', issues: parsed.error.issues.slice(0, 4) }, { status: 400 })
   }
   const b = parsed.data
-  // Deploy behind a trusted proxy that overwrites these headers; do not expose the app directly.
-  const ip = (req.headers.get('x-real-ip') ?? req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'local').slice(0, 120)
-  // simple rate limit: max 10 contributions per hour per ip
+  // Rate-limit identity is server-derived and privacy-minimized: a daily-salted
+  // one-way hash of the client IP (never the raw IP, never a client-supplied id).
+  const ip = clientIp(req)
+  const daySalt = new Date().toISOString().slice(0, 10)
+  const submitterHash = createHash('sha256').update(`contribute:${ip}:${daySalt}`).digest('hex').slice(0, 64)
+  // durable quota: max 10 contributions per hour per submitter hash
   const recent = await db.contribution.count({
-    where: { submittedBy: ip, createdAt: { gt: new Date(Date.now() - 3600_000) } },
+    where: { submittedBy: submitterHash, createdAt: { gt: new Date(Date.now() - 3600_000) } },
   })
   if (recent >= 10) return NextResponse.json({ error: 'rate_limited' }, { status: 429 })
 
@@ -66,7 +75,7 @@ export async function POST(req: NextRequest) {
       productId: b.productId ?? null,
       payload: JSON.stringify(b.payload ?? {}),
       // Rate-limit identity must be server-derived; never trust client submittedBy.
-      submittedBy: ip,
+      submittedBy: submitterHash,
     },
   })
   return NextResponse.json({ id: row.id, status: 'pending' })

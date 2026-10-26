@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { searchProducts } from '@/lib/server/catalog'
+import { rateLimit } from '@/lib/server/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
+  const limited = rateLimit(req, 'search', 120, 60_000)
+  if (limited) return limited
   const sp = req.nextUrl.searchParams
   try {
     const result = await searchProducts({
