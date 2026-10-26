@@ -327,6 +327,7 @@ export function WizardView() {
             <input
               value={nlText}
               onChange={(e) => { setNlText(e.target.value); setNlApplied(false) }}
+              aria-label="وصف الأسرة والميزانية بجملة واحدة"
               placeholder="أسرة من 7 أفراد فيهم رضيع عمره 5 شهور وميزانيتنا 200 دينار"
               className="flex-1 glass-thin rounded-xl min-h-11 px-4 text-sm"
             />

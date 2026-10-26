@@ -366,11 +366,15 @@ const DOC_CSS = `
 #report-doc[data-orientation='landscape'][data-paper='A5']{width:210mm;}
 #report-doc[data-orientation='landscape'][data-paper='letter']{width:279mm;}
 #report-doc[data-paper='80mm'] .rdoc-hide-80{display:none!important;}
+#report-doc[data-paper='80mm'] .grid{display:block!important;}
+#report-doc[data-paper='80mm'] .grid>div{min-width:0!important;max-width:100%!important;margin-top:6px!important;}
+#report-doc[data-paper='80mm'] .rdoc-sig{min-width:0!important;}
 #report-doc .rdoc-h2{font-size:16px;font-weight:800;margin:0 0 10px;padding-bottom:5px;border-bottom:2px solid #333;break-after:avoid;}
 #report-doc .rdoc-h3{font-size:13px;font-weight:700;margin:12px 0 6px;break-after:avoid;}
 #report-doc .rdoc-p{font-size:12px;line-height:1.9;margin:0 0 6px;overflow-wrap:anywhere;}
 #report-doc .rdoc-muted{color:#555;}
 #report-doc .rdoc-table{width:100%;border-collapse:collapse;table-layout:auto;font-size:11px;line-height:1.55;}
+#report-doc .rdoc-table td,#report-doc .rdoc-table th,#report-doc .rdoc-kv td,#report-doc .rdoc-kv th{overflow-wrap:anywhere;word-break:break-word;}
 #report-doc .rdoc-table th,#report-doc .rdoc-table td{border:1px solid #aaa;padding:4px 5px;text-align:right;vertical-align:top;overflow-wrap:anywhere;}
 #report-doc .rdoc-table thead th{background:#eee;font-weight:700;}
 #report-doc .rdoc-table .rdoc-sub td{font-weight:700;background:#f7f7f2;}
