@@ -19,5 +19,5 @@ const compile = spawnSync(tsc, [
   '--strict', '--noUncheckedIndexedAccess', '--skipLibCheck', '--esModuleInterop', '--rootDir', path.join(root, 'src', 'lib'), '--outDir', outDir, ...sources,
 ], { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' })
 if (compile.status !== 0) process.exit(compile.status || 1)
-const tests = spawnSync(process.execPath, ['--test', path.join(root, 'tests', 'engine.test.cjs'), path.join(root, 'tests', 'product-overlay.test.cjs'), path.join(root, 'tests', 'request-body.test.cjs')], { cwd: root, stdio: 'inherit' })
+const tests = spawnSync(process.execPath, ['--test', path.join(root, 'tests', 'engine.test.cjs'), path.join(root, 'tests', 'product-overlay.test.cjs'), path.join(root, 'tests', 'request-body.test.cjs'), path.join(root, 'tests', 'property.test.cjs'), path.join(root, 'tests', 'optimality.test.cjs')], { cwd: root, stdio: 'inherit' })
 process.exit(tests.status || 0)

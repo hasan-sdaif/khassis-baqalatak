@@ -27,6 +27,3 @@ db/*.db-journal
 
 # generated isolated engine-test build
 .test-build/
-
-# local audit artifacts (screenshots/PDFs) — reproduce via docs/UX_AUDIT.md steps
-artifacts/
