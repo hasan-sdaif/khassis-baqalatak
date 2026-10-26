@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- basket + customization slider, monochrome -->
+  <rect width="64" height="64" rx="14" fill="#1e6b4f"/>
+  <path d="M14 26h36l-4 22a4 4 0 0 1-4 3.4H22a4 4 0 0 1-4-3.4L14 26z" stroke="#f2f8f2" stroke-width="3" stroke-linejoin="round" fill="none"/>
+  <path d="M24 26l4-10M40 26l-4-10" stroke="#f2f8f2" stroke-width="3" stroke-linecap="round"/>
+  <path d="M22 36h20" stroke="#f0a63c" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="30" cy="36" r="4.2" fill="#171c17" stroke="#f0a63c" stroke-width="2.4"/>
+</svg>

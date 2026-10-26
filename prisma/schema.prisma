@@ -1,0 +1,141 @@
+// Khassis Baqalatak — application database (SQLite via Prisma)
+// Architecture decision: the 39,831-product catalog lives as an open reviewable
+// file (data/curated/catalog.json). This DB stores user/community/application
+// state and *overlays* (diffs) over the catalog so manual edits survive
+// re-imports (idempotent ETL). See docs/DECISIONS.md D-003.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Key/value application settings (currency, region, admin owner, feature flags)
+model Setting {
+  key       String   @id
+  value     String // JSON-encoded value
+  updatedAt DateTime @updatedAt
+}
+
+// ---------- Users (local-first; anonymous key lives in browser localStorage.
+// Roles apply to moderation/admin flows; first user becomes owner via setup wizard.)
+model User {
+  id        String   @id @default(cuid())
+  key       String   @unique // stable anonymous device/user key
+  name      String?
+  role      String   @default("viewer") // owner|admin|editor|moderator|contributor|viewer
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ---------- Manual edits overlaying the open catalog file.
+// data: { nameEn?, nameAr?, brand?, sizeText?, size?, category?, need?, tags?,
+//         status?, prices?: { [storeId]: { fils, origFils?, available? } }, added?, notes? }
+model ProductOverride {
+  id        String   @id // catalog product id (stable hash)
+  data      String // JSON
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ---------- Community contributions (price updates, corrections, new products, reports)
+model Contribution {
+  id          String    @id @default(cuid())
+  kind        String // price-update|name-fix|size-fix|category-fix|new-product|availability|barcode|generic
+  productId   String?
+  payload     String // JSON with submitted fields + optional note
+  submittedBy String? // user key
+  votes       Int       @default(0)
+  status      String    @default("pending") // pending|approved|rejected|applied
+  createdAt   DateTime  @default(now())
+  reviewedAt  DateTime?
+  reviewedBy  String?
+  reviewNote  String?
+}
+
+model Vote {
+  id            String   @id @default(cuid())
+  contributionId String
+  voterKey      String
+  value         Int      @default(1) // 1 | -1
+  createdAt     DateTime @default(now())
+
+  @@unique([contributionId, voterKey])
+}
+
+// ---------- Shared plans gallery (community sharing, fork-on-open)
+model SharedPlan {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  title       String
+  familyName  String?
+  authorName  String?
+  payload     String // JSON: { household, budget, envelopes, context, config, planResult }
+  stats       String // JSON: { cost, items, coverage, waste, mode, members }
+  likes       Int      @default(0)
+  forks       Int      @default(0)
+  isPublic    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+model PlanLike {
+  id      String   @id @default(cuid())
+  planId  String
+  voterKey String
+  createdAt DateTime @default(now())
+
+  @@unique([planId, voterKey])
+}
+
+// ---------- Generated reports archive (print/PDF/CSV/JSON provenance)
+model ReportRecord {
+  id              String   @id @default(cuid())
+  type            String // full-plan|shopping-list|budget|spending|store-compare|consumption|product-compare|calculator|pantry|admin-quality
+  name            String
+  familyName      String?
+  preparerName    String?
+  planName        String?
+  options         String // JSON: sections, paper size, ink mode, public/detailed, custom names
+  dataSnapshot    String // JSON snapshot of the data the report was generated from
+  planFingerprint String?
+  createdAt       DateTime @default(now())
+}
+
+// ---------- Import batches (ETL dry-run / apply audit trail)
+model ImportBatch {
+  id        String   @id @default(cuid())
+  source    String // file name
+  format    String // json|markdown|csv
+  mode      String // dry|apply
+  stats     String // JSON { read, inserted, updated, unchanged, skipped, errors[] }
+  createdAt DateTime @default(now())
+  appliedAt DateTime?
+}
+
+// ---------- Audit log with selective rollback
+model AuditEntry {
+  id         String    @id @default(cuid())
+  actor      String // user key or "admin" | "system" | "import"
+  action     String // create|update|delete|import|rollback|moderate|share
+  targetType String // product|contribution|setting|plan|import|user
+  targetId   String
+  before     String? // JSON
+  after      String? // JSON
+  createdAt  DateTime  @default(now())
+  revertedAt DateTime?
+}
+
+// ---------- Aggregated "missing data" requests (spec 4.9-b)
+model DataRequest {
+  id        String   @id @default(cuid())
+  kind      String // e.g. tobacco|barcode|category
+  label     String
+  count     Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([kind, label])
+}

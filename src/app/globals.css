@@ -1,0 +1,332 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ============ Khassis Baqalatak — Liquid Glass Design System ============
+   Warm deep green primary + amber accent (NO indigo/blue).
+   Five glass materials, aurora mesh background, three layout shells.
+   Print styles drop ALL glass (solid white). See docs/DESIGN_SYSTEM.md */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-app-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 10px);
+  --radius-3xl: calc(var(--radius) + 18px);
+}
+
+:root {
+  --radius: 20px;
+
+  /* warm light theme */
+  --background: #f6f4ee;
+  --foreground: #20301f;
+  --card: #ffffff;
+  --card-foreground: #20301f;
+  --popover: #ffffff;
+  --popover-foreground: #20301f;
+  --primary: #1e6b4f;
+  --primary-foreground: #f2f8f2;
+  --secondary: #e8e4d8;
+  --secondary-foreground: #2a3a29;
+  --muted: #eceada;
+  --muted-foreground: #66705f;
+  --accent: #d97706;
+  --accent-foreground: #fffaf0;
+  --destructive: #b3261e;
+  --destructive-foreground: #fff5f4;
+  --border: rgba(32, 48, 31, 0.12);
+  --input: rgba(32, 48, 31, 0.16);
+  --ring: #1e6b4f;
+  --chart-1: #1e6b4f;
+  --chart-2: #d97706;
+  --chart-3: #5b8c5a;
+  --chart-4: #a35c12;
+  --chart-5: #31427c;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #20301f;
+  --sidebar-primary: #1e6b4f;
+  --sidebar-primary-foreground: #f2f8f2;
+  --sidebar-accent: #e8f0e6;
+  --sidebar-accent-foreground: #1e6b4f;
+  --sidebar-border: rgba(32, 48, 31, 0.1);
+  --sidebar-ring: #1e6b4f;
+
+  /* aurora mesh (light) */
+  --aurora-1: rgba(94, 158, 113, 0.28);
+  --aurora-2: rgba(236, 178, 92, 0.25);
+  --aurora-3: rgba(120, 160, 140, 0.2);
+
+  /* glass materials (light) */
+  --glass-tint-light: rgba(255, 255, 255, 0.55);
+  --glass-tint-dark: rgba(24, 32, 24, 0.55);
+}
+
+.dark {
+  --background: #171c17;
+  --foreground: #e9efe5;
+  --card: #202820;
+  --card-foreground: #e9efe5;
+  --popover: #232b23;
+  --popover-foreground: #e9efe5;
+  --primary: #4ea37a;
+  --primary-foreground: #10231a;
+  --secondary: #2b342a;
+  --secondary-foreground: #dde5d8;
+  --muted: #272f26;
+  --muted-foreground: #9aa895;
+  --accent: #f0a63c;
+  --accent-foreground: #2a1c05;
+  --destructive: #e5544b;
+  --destructive-foreground: #2a0f0d;
+  --border: rgba(233, 239, 229, 0.12);
+  --input: rgba(233, 239, 229, 0.16);
+  --ring: #4ea37a;
+  --chart-1: #4ea37a;
+  --chart-2: #f0a63c;
+  --chart-3: #8fb98a;
+  --chart-4: #d97706;
+  --chart-5: #93a6d9;
+  --sidebar: #1c241c;
+  --sidebar-foreground: #e9efe5;
+  --sidebar-primary: #4ea37a;
+  --sidebar-primary-foreground: #10231a;
+  --sidebar-accent: #263226;
+  --sidebar-accent-foreground: #8fc9a9;
+  --sidebar-border: rgba(233, 239, 229, 0.1);
+  --sidebar-ring: #4ea37a;
+
+  --aurora-1: rgba(30, 107, 79, 0.35);
+  --aurora-2: rgba(176, 116, 26, 0.22);
+  --aurora-3: rgba(46, 74, 56, 0.4);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "tnum" 1; /* tabular numbers for prices */
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--primary) 25%, transparent);
+  }
+}
+
+/* ============ Aurora background ============ */
+.aurora-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  overflow: hidden;
+  background: var(--background);
+}
+.aurora-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(80px);
+  will-change: transform;
+}
+.aurora-blob-1 { width: 55vw; height: 55vw; top: -18vw; inset-inline-start: -12vw; background: var(--aurora-1); animation: aurora-drift-1 46s ease-in-out infinite alternate; }
+.aurora-blob-2 { width: 48vw; height: 48vw; bottom: -16vw; inset-inline-end: -10vw; background: var(--aurora-2); animation: aurora-drift-2 38s ease-in-out infinite alternate; }
+.aurora-blob-3 { width: 36vw; height: 36vw; top: 34%; inset-inline-start: 28%; background: var(--aurora-3); animation: aurora-drift-3 52s ease-in-out infinite alternate; }
+.aurora-noise {
+  position: absolute;
+  inset: 0;
+  opacity: 0.5;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+@keyframes aurora-drift-1 { from { transform: translate(0, 0) scale(1); } to { transform: translate(6vw, 4vw) scale(1.15); } }
+@keyframes aurora-drift-2 { from { transform: translate(0, 0) scale(1.1); } to { transform: translate(-5vw, -4vw) scale(0.95); } }
+@keyframes aurora-drift-3 { from { transform: translate(0, 0) scale(0.9); } to { transform: translate(4vw, -5vw) scale(1.12); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora-blob { animation: none !important; }
+}
+
+/* ============ Glass materials ============ */
+.glass {
+  background: color-mix(in srgb, var(--card) 62%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
+  box-shadow:
+    0 1px 0 0 color-mix(in srgb, #fff 35%, transparent) inset,
+    0 8px 32px -12px rgba(16, 24, 16, 0.25);
+}
+.dark .glass {
+  background: color-mix(in srgb, var(--card) 55%, transparent);
+  border-color: color-mix(in srgb, #fff 10%, transparent);
+  box-shadow:
+    0 1px 0 0 color-mix(in srgb, #fff 8%, transparent) inset,
+    0 8px 32px -12px rgba(0, 0, 0, 0.5);
+}
+.glass-thin {
+  background: color-mix(in srgb, var(--card) 38%, transparent);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  backdrop-filter: blur(10px) saturate(140%);
+  border: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+.glass-chrome {
+  background: color-mix(in srgb, var(--card) 72%, transparent);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
+  box-shadow:
+    0 0.5px 0 0 color-mix(in srgb, #fff 45%, transparent) inset,
+    0 -1px 0 0 color-mix(in srgb, var(--foreground) 6%, transparent) inset,
+    0 10px 40px -14px rgba(16, 24, 16, 0.35);
+}
+.glass-ultrathin {
+  background: color-mix(in srgb, var(--card) 22%, transparent);
+  -webkit-backdrop-filter: blur(8px) saturate(130%);
+  backdrop-filter: blur(8px) saturate(130%);
+  border: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
+}
+/* solid alternative for long lists (performance, spec 10.2-2) */
+.glass-row {
+  background: color-mix(in srgb, var(--card) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
+}
+
+/* transparency reduction (user setting / a11y) */
+.reduce-transparency .glass,
+.reduce-transparency .glass-thin,
+.reduce-transparency .glass-chrome,
+.reduce-transparency .glass-ultrathin,
+.reduce-transparency .glass-row {
+  background: var(--card) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass, .glass-thin, .glass-chrome, .glass-ultrathin, .glass-row {
+    background: var(--card);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+@media (prefers-contrast: more) {
+  .glass, .glass-thin, .glass-chrome, .glass-ultrathin {
+    border: 1.5px solid color-mix(in srgb, var(--foreground) 45%, transparent);
+  }
+}
+@supports not (backdrop-filter: blur(1px)) {
+  .glass, .glass-thin, .glass-chrome, .glass-ultrathin {
+    background: var(--card);
+  }
+}
+
+/* ============ Layout shells ============ */
+.shell { min-height: 100dvh; display: flex; flex-direction: column; }
+.shell-main { flex: 1; width: 100%; margin-inline: auto; padding-inline: 16px; padding-block: 12px 96px; max-width: 640px; }
+/* tablet split-view */
+@media (min-width: 700px) and (max-width: 1179px) {
+  .shell-main { max-width: 900px; padding-block: 16px 32px; }
+}
+/* desktop 3-pane */
+@media (min-width: 1180px) {
+  .shell-main { max-width: 1280px; padding-inline: 24px; padding-block: 20px 40px; }
+}
+
+/* bottom tab bar (phone) */
+.tabbar {
+  position: fixed;
+  bottom: 0;
+  inset-inline: 0;
+  z-index: 40;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+@media (min-width: 1180px) {
+  .tabbar { display: none; }
+}
+
+/* large title that shrinks */
+.big-title { font-size: clamp(1.7rem, 5vw, 2.6rem); font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; }
+
+/* spring-ish micro animations */
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.pop-in { animation: pop-in 320ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .pop-in { animation: none; }
+}
+
+/* number ticker highlight */
+@keyframes flash-num {
+  0% { color: var(--accent); }
+  100% { color: inherit; }
+}
+.flash-num { animation: flash-num 900ms ease-out; }
+
+/* custom scrollbar for long lists */
+.nice-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.nice-scroll::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--foreground) 18%, transparent); border-radius: 999px; }
+.nice-scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* RTL logical helpers */
+[dir='rtl'] .flip-x { transform: scaleX(-1); }
+
+/* ============ PRINT: drop ALL glass ============ */
+@media print {
+  .aurora-bg, .tabbar, .no-print { display: none !important; }
+  .glass, .glass-thin, .glass-chrome, .glass-ultrathin, .glass-row {
+    background: #fff !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    border: 1px solid #bbb !important;
+    box-shadow: none !important;
+  }
+  body { background: #fff !important; color: #000 !important; }
+  .shell-main { max-width: none !important; padding: 0 !important; }
+  .print-page { page-break-after: always; }
+  .print-avoid-break { break-inside: avoid; page-break-inside: avoid; }
+  thead { display: table-header-group; }
+  .ink-saver img, .ink-saver svg [fill] { filter: grayscale(1); }
+  /* motion primitives: always fully visible on paper, even mid-animation */
+  .motion-fade, .motion-item { opacity: 1 !important; transform: none !important; }
+}
+
+@page {
+  margin: 14mm;
+}
