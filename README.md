@@ -75,12 +75,12 @@ data/
 ├─ raw/grocery-db-bahrain/  # أرشيف Markdown الأصلي (استيراده من مركز الإدارة)
 └─ curated/catalog.json     # الكتالوج المنظف (مفتوح المصدر، قابل للمراجعة)
 prisma/schema.prisma         # تراكبات/مساهمات/خطط مشاركة/تدقيق/استيراد
-docs/                        # الخوارزمية، التصميم، جرد البيانات، القرارات، الحدود، تقارير الاستكمال والتسليم
+docs/                        # الخوارزمية، التصميم، جرد البيانات، القرارات، الحدود، الأمان (THREAT_MODEL/API_SECURITY_MATRIX/API)، الأداء، UX، المخططات، خط الأساس، وتقارير الاستكمال والتسليم — وOpenAPI في docs/openapi.json
 ```
 
 ## حالة التحقق الحالية
 
-راجع `PROGRESS.md` و`docs/CONTINUATION_FINDINGS.md` لمعرفة ما اختُبر فعلياً وما بقي غير متحقق. اختبارات المحرك المستقلة تُشغّل عبر `bun run test` أو `npm test`. لا تعتبر المشروع جاهزاً للإنتاج قبل نجاح التثبيت والبناء وفحوص النوع والـ lint واختبارات API وE2E في بيئة الاعتمادات الكاملة.
+راجع `PROGRESS.md` و`docs/CONTINUATION_FINDINGS.md` لمعرفة ما اختُبر فعلياً وما بقي غير متحقق. الفحوص: `bun run test` (37 اختبار محرك/خصائص/أمثلية)، `node scripts/test-classification.cjs` (تصنيف)، `node scripts/test-api.cjs` (API، يتطلب خادماً حياً)، `bun run typecheck`، `bun run lint`، `bun run benchmark`، `bun run data:audit`، `bun run check:openapi`. لا تعتبر المشروع جاهزاً للإنتاج قبل نجاح التثبيت والبناء وفحوص النوع والـ lint واختبارات API وE2E في بيئة الاعتمادات الكاملة.
 
 لاستكمال العمل على المشروع، ابدأ من `PROGRESS.md` و`docs/CONTINUATION_FINDINGS.md` و`docs/FINAL_REPORT.md` ثم نفّذ الفحوص بنفسك، ولا تتجاوز قيود البيانات والأمان الموثقة في `DATA_LICENSE.md` و`docs/KNOWN_LIMITATIONS.md`.
 

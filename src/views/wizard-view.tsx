@@ -151,6 +151,7 @@ export function WizardView() {
     { id: 'm2', ageMonths: 444, gender: 'm', specials: [] },
   ])
   const [habits, setHabits] = useState<Record<string, Record<string, string | number | boolean>>>(store.household?.habits ?? { water: { litersPerPersonDay: 1.5 }, coffee: { cupsPerDay: 2 }, tea: { cupsPerDay: 3 } })
+  const [showTobaccoGate, setShowTobaccoGate] = useState(false)
   const [dietary, setDietary] = useState(store.household?.dietary ?? { halalOnly: true })
   const [budgetInput, setBudgetInput] = useState(store.budget ? String(store.budget.fils / 1000) : '')
   const [period, setPeriod] = useState<'week' | 'biweekly' | 'month' | 'custom'>(store.budget?.period ?? 'month')
@@ -458,19 +459,27 @@ export function WizardView() {
                   <div className="flex items-center justify-between mb-2">
                     <span className="flex items-center gap-2 font-semibold text-sm"><Icon size={18} strokeWidth={1.75} aria-hidden /> {card.nameAr}</span>
                     <button
-                      onClick={() => setHabits((h) => {
-                        const next = { ...h }
-                        if (next[card.id] != null) delete next[card.id]
-                        else next[card.id] = { ...card.default }
-                        return next
-                      })}
+                      onClick={() => {
+                        // age gate (spec 8.3): the tobacco category cannot even be
+                        // enabled before an explicit 18+ confirmation
+                        if (card.id === 'smoking' && habits['smoking'] == null && !store.settings.ageGatePassed) {
+                          setShowTobaccoGate(true)
+                          return
+                        }
+                        setHabits((h) => {
+                          const next = { ...h }
+                          if (next[card.id] != null) delete next[card.id]
+                          else next[card.id] = { ...card.default }
+                          return next
+                        })
+                      }}
                       className={`min-h-9 px-3 rounded-lg text-xs font-bold ${active ? 'bg-primary/15 text-primary' : 'bg-secondary text-muted-foreground'}`}
                       aria-pressed={active}
                     >
                       {active ? 'مفعّلة' : 'موقوفة'}
                     </button>
                   </div>
-                  {habits[card.id] != null ? (
+                  {(habits[card.id] != null || (card.id === 'smoking' && showTobaccoGate)) ? (
                     <div className="space-y-2">
                       {card.id === 'coffee' && (
                         <label className="text-xs text-muted-foreground">فناجين القهوة/يوم لكل بالغ: {habits['coffee']?.cupsPerDay ?? 2}
@@ -495,22 +504,36 @@ export function WizardView() {
                       {card.id === 'smoking' && (
                         <div className="space-y-2">
                           <div className="text-xs text-muted-foreground">تُعامل ك بند إنفاق حقيقي محجوز أولاً — بلا وعظ وبلا اقتراح بدائل</div>
-                          <label className="text-xs text-muted-foreground">سيجارة/يوم: {habits['smoking']?.cigsPerDay ?? 20}
-                            <input type="range" min={1} max={40} value={Number(habits['smoking']?.cigsPerDay ?? 20)} onChange={(e) => setHabits((h) => ({ ...h, smoking: { ...h['smoking'], cigsPerDay: Number(e.target.value) } }))} className="w-full accent-[var(--primary)]" />
-                          </label>
-                          <input
-                            placeholder="العلامة (مثال: مالبورو) — اختياري"
-                            value={String(habits['smoking']?.brand ?? '')}
-                            onChange={(e) => setHabits((h) => ({ ...h, smoking: { ...h['smoking'], brand: e.target.value } }))}
-                            className="w-full glass-thin rounded-lg h-9 px-3 text-sm"
-                          />
-                          <input
-                            placeholder="سعر العلبة (د.ب) — يدوياً إن لم تتوفر بيانات"
-                            inputMode="decimal"
-                            value={habits['smoking']?.manualPriceFils ? String(Number(habits['smoking']?.manualPriceFils) / 1000) : ''}
-                            onChange={(e) => setHabits((h) => ({ ...h, smoking: { ...h['smoking'], manualPriceFils: parseBHDToFils(e.target.value) } }))}
-                            className="w-full glass-thin rounded-lg h-9 px-3 text-sm"
-                          />
+                          {store.settings.ageGatePassed ? (
+                            <>
+                              <label className="text-xs text-muted-foreground">سيجارة/يوم: {habits['smoking']?.cigsPerDay ?? 20}
+                                <input type="range" min={1} max={40} value={Number(habits['smoking']?.cigsPerDay ?? 20)} onChange={(e) => setHabits((h) => ({ ...h, smoking: { ...h['smoking'], cigsPerDay: Number(e.target.value) } }))} className="w-full accent-[var(--primary)]" />
+                              </label>
+                              <input
+                                placeholder="العلامة (مثال: مالبورو) — اختياري"
+                                value={String(habits['smoking']?.brand ?? '')}
+                                onChange={(e) => setHabits((h) => ({ ...h, smoking: { ...h['smoking'], brand: e.target.value } }))}
+                                className="w-full glass-thin rounded-lg h-9 px-3 text-sm"
+                              />
+                              <input
+                                placeholder="سعر العلبة (د.ب) — يدوياً إن لم تتوفر بيانات"
+                                inputMode="decimal"
+                                value={habits['smoking']?.manualPriceFils ? String(Number(habits['smoking']?.manualPriceFils) / 1000) : ''}
+                                onChange={(e) => setHabits((h) => ({ ...h, smoking: { ...h['smoking'], manualPriceFils: parseBHDToFils(e.target.value) } }))}
+                                className="w-full glass-thin rounded-lg h-9 px-3 text-sm"
+                              />
+                            </>
+                          ) : (
+                            /* age gate (spec 8.3): tobacco controls stay hidden until an explicit 18+ confirmation */
+                            <div className="rounded-lg glass-thin p-3 flex flex-wrap items-center justify-between gap-2">
+                              <span className="text-xs text-muted-foreground">فئة التبغ للبالغين (18+) فقط — تُفعّل بعد التأكيد.</span>
+                              <GlassButton size="sm" className="min-h-11" onClick={() => {
+                                store.setSettings({ ageGatePassed: true })
+                                setHabits((h) => (h['smoking'] == null ? { ...h, smoking: { active: true, cigsPerDay: 20 } } : h))
+                                setShowTobaccoGate(false)
+                              }}>أنا فوق 18 — فعّل البند</GlassButton>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

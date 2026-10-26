@@ -1,0 +1,17 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: "file:/app/db/custom.db"
+      # generate a long random secret before exposing the admin surface publicly
+      ADMIN_API_KEY: "${ADMIN_API_KEY:?set ADMIN_API_KEY in your environment}"
+      # set to true ONLY behind a reverse proxy that overwrites X-Forwarded-For
+      TRUST_PROXY_HEADERS: "false"
+    volumes:
+      - app-db:/app/db
+    restart: unless-stopped
+
+volumes:
+  app-db:

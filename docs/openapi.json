@@ -1,0 +1,902 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "خصص بقالتك API",
+    "version": "2.0.0",
+    "description": "Bahrain grocery budget planner API. Amounts are integer fils (BHD). Auth: admin routes require the x-admin-key header. Rate limits are per client per minute and documented per path.",
+    "license": {
+      "name": "MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "paths": {
+    "/api/health": {
+      "get": {
+        "summary": "Readiness probe",
+        "responses": {
+          "200": {
+            "description": "ok"
+          }
+        }
+      }
+    },
+    "/api/catalog": {
+      "get": {
+        "summary": "Catalog metadata (categories, stores, groups, needs, brands)",
+        "responses": {
+          "200": {
+            "description": "ok"
+          }
+        }
+      }
+    },
+    "/api/index": {
+      "get": {
+        "summary": "Price index & standard baskets per store",
+        "responses": {
+          "200": {
+            "description": "ok"
+          }
+        }
+      }
+    },
+    "/api/search": {
+      "get": {
+        "summary": "Search products (rate limit 120/min)",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "brand",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "store",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "need",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "minFils",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "maxFils",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "relevance",
+                "price-asc",
+                "price-desc",
+                "unit-asc",
+                "popularity"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "400": {
+            "description": "invalid_*"
+          },
+          "429": {
+            "description": "rate_limited"
+          }
+        }
+      }
+    },
+    "/api/product/{id}": {
+      "get": {
+        "summary": "Product detail with store prices + similar",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "404": {
+            "description": "not_found"
+          }
+        }
+      }
+    },
+    "/api/dump": {
+      "get": {
+        "summary": "Full open catalog JSON download (rate limit 6/min)",
+        "responses": {
+          "200": {
+            "description": "attachment"
+          },
+          "503": {
+            "description": "not_available"
+          }
+        }
+      }
+    },
+    "/api/plan": {
+      "post": {
+        "summary": "Generate a grocery plan (rate limit 60/min, body ≤512KB)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "plan + engineMs"
+          },
+          "400": {
+            "description": "invalid_input | invalid_json | invalid_encoding"
+          },
+          "413": {
+            "description": "request_too_large"
+          },
+          "429": {
+            "description": "rate_limited"
+          }
+        }
+      }
+    },
+    "/api/plans": {
+      "get": {
+        "summary": "Public gallery (rate limit 60/min)",
+        "parameters": [
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "likes",
+                "recent"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 60,
+              "default": 24
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "items[]"
+          }
+        }
+      },
+      "post": {
+        "summary": "Publish a plan (explicit consent, rate limit 6/min, body ≤512KB)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanShare"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "id+slug+stats"
+          },
+          "400": {
+            "description": "invalid_input (incl. missing consent)"
+          },
+          "422": {
+            "description": "unknown_or_inactive_store | unknown_locked_product"
+          }
+        }
+      }
+    },
+    "/api/plans/{slug}": {
+      "get": {
+        "summary": "Public plan view (regenerated live)",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{5,80}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "404": {
+            "description": "not_found (unknown or private)"
+          }
+        }
+      }
+    },
+    "/api/contribute": {
+      "get": {
+        "summary": "Public pending queue only (rate limit 60/min)",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "items[]"
+          },
+          "400": {
+            "description": "unsupported_status"
+          }
+        }
+      },
+      "post": {
+        "summary": "Submit contribution (rate limit 6/min + 10/hour, body ≤32KB)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "price-update",
+                      "name-fix",
+                      "size-fix",
+                      "category-fix",
+                      "new-product",
+                      "availability",
+                      "barcode",
+                      "generic"
+                    ]
+                  },
+                  "productId": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "payload": {
+                    "type": "object",
+                    "maxProperties": 100
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "id+status pending"
+          },
+          "400": {
+            "description": "invalid_input"
+          },
+          "429": {
+            "description": "rate_limited"
+          }
+        }
+      }
+    },
+    "/api/contribute/{id}/vote": {
+      "post": {
+        "summary": "Vote on a contribution (rate limit 60/min, body ≤4KB)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "voterKey",
+                  "value"
+                ],
+                "properties": {
+                  "voterKey": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 60
+                  },
+                  "value": {
+                    "type": "integer",
+                    "enum": [
+                      1,
+                      -1
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "ok+votes"
+          },
+          "400": {
+            "description": "invalid_input"
+          },
+          "404": {
+            "description": "not_found"
+          },
+          "409": {
+            "description": "already_reviewed"
+          }
+        }
+      }
+    },
+    "/api/admin/stats": {
+      "get": {
+        "summary": "Admin stats (x-admin-key)",
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "401": {
+            "description": "admin_unauthorized"
+          },
+          "429": {
+            "description": "rate_limited (12 fails/5min)"
+          },
+          "503": {
+            "description": "admin_not_configured (production without key)"
+          }
+        }
+      }
+    },
+    "/api/admin/audit": {
+      "get": {
+        "summary": "Audit log (x-admin-key)",
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "401": {
+            "description": "admin_unauthorized"
+          }
+        }
+      },
+      "post": {
+        "summary": "Rollback an audit entry (x-admin-key, body ≤4KB)",
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "400": {
+            "description": "invalid_input"
+          },
+          "404": {
+            "description": "not_found"
+          }
+        }
+      }
+    },
+    "/api/admin/products": {
+      "get": {
+        "summary": "List/overlay products (x-admin-key)",
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "401": {
+            "description": "admin_unauthorized"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create/bulk products (x-admin-key, body ≤256KB)",
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "422": {
+            "description": "unknown category/store"
+          }
+        }
+      }
+    },
+    "/api/admin/product/{id}": {
+      "get": {
+        "summary": "Product with overlay (x-admin-key)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "404": {
+            "description": "not_found"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Edit product fields (x-admin-key, body ≤64KB)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "422": {
+            "description": "unknown category/store"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Soft delete (x-admin-key)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          }
+        }
+      }
+    },
+    "/api/admin/import": {
+      "post": {
+        "summary": "ETL import dry-run/apply (x-admin-key)",
+        "responses": {
+          "200": {
+            "description": "dry-run report or apply result"
+          }
+        }
+      }
+    },
+    "/api/admin/moderate": {
+      "post": {
+        "summary": "Approve/reject contributions (x-admin-key, body ≤16KB)",
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "404": {
+            "description": "not_found"
+          }
+        }
+      }
+    },
+    "/api/": {
+      "get": {
+        "summary": "Route index",
+        "responses": {
+          "200": {
+            "description": "ok"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "PlanBody": {
+        "type": "object",
+        "required": [
+          "household",
+          "budget"
+        ],
+        "properties": {
+          "household": {
+            "$ref": "#/components/schemas/Household"
+          },
+          "budget": {
+            "type": "object",
+            "required": [
+              "fils"
+            ],
+            "properties": {
+              "fils": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000000
+              },
+              "period": {
+                "type": "string",
+                "enum": [
+                  "week",
+                  "biweekly",
+                  "month",
+                  "custom"
+                ],
+                "default": "month"
+              },
+              "horizonDays": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 120,
+                "default": 30
+              },
+              "flexibilityPct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 0.3
+              },
+              "reservePct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 0.3,
+                "default": 0.05
+              }
+            }
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "crisis",
+              "economy",
+              "balanced",
+              "comfortable",
+              "custom"
+            ],
+            "default": "balanced"
+          },
+          "season": {
+            "type": "string",
+            "enum": [
+              "normal",
+              "ramadan",
+              "eid",
+              "back-to-school",
+              "summer"
+            ],
+            "default": "normal"
+          },
+          "storeMode": {
+            "type": "string",
+            "enum": [
+              "median",
+              "best-single",
+              "split"
+            ],
+            "default": "median"
+          },
+          "availableStores": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "maxItems": 100
+          },
+          "delivery": {
+            "type": "boolean",
+            "default": true
+          },
+          "locks": {
+            "type": "array",
+            "maxItems": 500,
+            "items": {
+              "type": "object",
+              "required": [
+                "productId"
+              ],
+              "properties": {
+                "productId": {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                "qty": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 60
+                }
+              }
+            }
+          },
+          "envelopes": {
+            "type": "array",
+            "maxItems": 100
+          },
+          "pantry": {
+            "type": "array",
+            "maxItems": 1000
+          },
+          "seed": {
+            "type": "integer",
+            "default": 42
+          },
+          "advanced": {
+            "type": "object"
+          }
+        }
+      },
+      "PlanShare": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PlanBody"
+          },
+          {
+            "type": "object",
+            "required": [
+              "title",
+              "consentToPublishHousehold"
+            ],
+            "properties": {
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "familyName": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "authorName": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "isAnonymous": {
+                "type": "boolean",
+                "default": true
+              },
+              "consentToPublishHousehold": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ],
+                "description": "explicit opt-in: publishing includes age bands, habits, diet, budget, pantry and preferences"
+              }
+            }
+          }
+        ]
+      },
+      "Household": {
+        "type": "object",
+        "required": [
+          "members",
+          "dietary"
+        ],
+        "properties": {
+          "familyName": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "members": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 40,
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "ageMonths"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "name": {
+                  "type": "string",
+                  "maxLength": 80
+                },
+                "ageMonths": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1440
+                },
+                "gender": {
+                  "type": "string",
+                  "enum": [
+                    "m",
+                    "f"
+                  ]
+                },
+                "activity": {
+                  "type": "string",
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high"
+                  ]
+                },
+                "specials": {
+                  "type": "array",
+                  "maxItems": 40,
+                  "items": {
+                    "type": "string",
+                    "maxLength": 100
+                  }
+                }
+              }
+            }
+          },
+          "habits": {
+            "type": "object"
+          },
+          "dietary": {
+            "type": "object",
+            "required": [
+              "halalOnly"
+            ],
+            "properties": {
+              "halalOnly": {
+                "type": "boolean"
+              },
+              "sugarFree": {
+                "type": "boolean"
+              },
+              "lowSodium": {
+                "type": "boolean"
+              },
+              "glutenFree": {
+                "type": "boolean"
+              },
+              "lactoseFree": {
+                "type": "boolean"
+              },
+              "nutFree": {
+                "type": "boolean"
+              }
+            }
+          },
+          "prefs": {
+            "type": "object"
+          },
+          "eatingOutPerWeek": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 21,
+            "default": 2
+          },
+          "guestsPerMonth": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 120,
+            "default": 4
+          },
+          "hasWaterDispenser": {
+            "type": "boolean",
+            "default": false
+          },
+          "storage": {
+            "type": "string",
+            "enum": [
+              "small",
+              "medium",
+              "large"
+            ],
+            "default": "medium"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "adminKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-admin-key"
+      }
+    }
+  },
+  "security": []
+}

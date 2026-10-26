@@ -19,7 +19,8 @@
     "test:api": "node scripts/test-api.cjs",
     "benchmark": "node scripts/benchmark.cjs",
     "test:classification": "node scripts/test-classification.cjs",
-    "data:audit": "node scripts/generate-data-audit.cjs"
+    "data:audit": "node scripts/generate-data-audit.cjs",
+    "check:openapi": "node scripts/check-openapi.cjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

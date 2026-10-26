@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install (frozen lockfile)
+        run: bun install --frozen-lockfile
+
+      - name: Prisma client
+        run: bunx prisma generate
+        env:
+          DATABASE_URL: "file:./ci-placeholder.db"
+
+      - name: Unit / property / optimality / classification tests
+        run: bun run test
+
+      - name: Typecheck (strict + noUncheckedIndexedAccess)
+        run: bun run typecheck
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Data audit is reproducible
+        run: bun run data:audit
+
+      - name: OpenAPI spec matches implementation
+        run: bun run check:openapi
+
+      - name: Production build
+        run: bun run build
+        env:
+          DATABASE_URL: "file:./ci-placeholder.db"
+          # engine catalog ships with the repo; no network needed
