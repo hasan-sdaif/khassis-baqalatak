@@ -55,13 +55,17 @@ function mulberry32(seed) {
 
 // The pinned product must survive the engine's per-need name filter
 // (productMatchesNeed 'rice'): the product name must mention rice/أرز/رز and
-// must not be a rice-flour/cracker/cake product, otherwise the lock is
-// un-honorable and would only produce a warning. This local predicate mirrors
-// that rule so the lock is guaranteed to enter the rice candidate pool.
+// must not be a rice-flour/cracker/cake/noodle/milk/paper/starch product,
+// otherwise the lock is un-honorable and would only produce a warning. This
+// local predicate mirrors that rule (kept in sync with the engine guard) so
+// the lock is guaranteed to enter the rice candidate pool.
 function matchesRiceNeed(product) {
   const name = normalizeArabic(`${product.nameAr ?? ''} ${product.nameEn ?? ''} ${product.brand ?? ''}`)
-  const mentionsRice = /\brice\b/i.test(name) || /رز/.test(name)
-  const excluded = /\brice\s*(?:flour|crackers?|cakes?)\b/i.test(name) || /دقيق\s*الارز|كعك\s*الارز/.test(name)
+  const mentionsRice = /\brice\b/i.test(name) || /رز/.test(name) || /ارز/.test(name)
+  const excluded = /\brice\s*(?:flour|crackers?|cakes?|noodles?|vermicelli|milk|paper|starch|syrup|puff?s?|cakes?)\b/i.test(name)
+    || /popped\s*rice/i.test(name)
+    || /دقيق\s*الارز|كعك\s*الارز|نودلز\s*الارز|شعرية\s*الارز|حليب\s*الارز|ورق\s*الارز|نشا\s*الارز/i.test(name)
+    || /حلو/.test(name) || /بوب\s*كورن|pop\s*corn/i.test(name)
   return mentionsRice && !excluded
 }
 

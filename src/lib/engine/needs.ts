@@ -96,6 +96,7 @@ export const NEEDS: NeedDef[] = [
 
 /** Fallback need per category (generic need = whole category). */
 const CATEGORY_FALLBACK: Record<string, { id: string; clazz: NeedClass; weight: number }> = {
+  'eggs': { id: 'cat.eggs', clazz: 'regular', weight: 0.35 },
   'milk': { id: 'cat.milk', clazz: 'regular', weight: 0.5 },
   'yogurt-laban': { id: 'cat.yogurt-laban', clazz: 'regular', weight: 0.5 },
   'cheese': { id: 'cat.cheese', clazz: 'regular', weight: 0.5 },
@@ -244,13 +245,13 @@ const RULES: Rule[] = [
   // source archive has misfiled items like "Banana Essence").
   { need: 'cat.milk', cat: ['milk'], re: /^(?!.*(?:حليب|milk|لبن|laban|yogh|زبادي|كريم|cream|مراعي|المراعي|نادك|ندى|الصافي|صافي|اوال|أوال|awal|nada|nadec|almarai|alsa|alsafi|mazaya|rainbow|puck|nestle|anlene|ancho|hi-lo|lal|coast|nutri|mudhish|alwaha|domty|lurpak|kerry|preg|laian|jana|aquafina)).*$/i },
   // --- infant formula (before milk rules! requires milk/feeding context, excludes baby oil etc.)
-  { need: 'formula', cat: ['baby-products', 'milk'], re: /حليب\s*(?:اطفال|أطفال|الرضع|رضع)|حليب\s*بودرة\s*(?:لل)?(?:رضع|أطفال)|(?:رضع|طفل|أطفال).*(?:حليب|بودرة)|infant\s*(?:formula|milk)|baby\s*(?:formula|milk)\s*(?!oil)|\b(?:aptamil|aptamil|similac|\bnan\b|s-26|s26|enfamil|bebelac|novalac|premikid|pellargon|frisolac|hipp\b)\b|stage\s*[1-4]|مرحلة\s*[1-4]|مواليد\s*حليب/i },
+  { need: 'formula', cat: ['baby-products', 'milk'], nf: true, re: /^(?!.*(?:rusk|بسكويت|بسكوت|biscuit|cookie|كراكر|cracker|cereal|سيريلاك|cerelac|عصير|juice|مهلبية|بوريديج|porridge|pediasure|pedia\s*sure|ensure|بيدياشور|إنشور|انشور)).*(?:حليب\s*(?:اطفال|أطفال|الرضع|رضع)|حليب\s*بودرة\s*(?:لل)?(?:رضع|أطفال)|(?:رضع|طفل|أطفال).*(?:حليب|بودرة)|infant\s*(?:formula|milk)|baby\s*(?:formula|milk)\s*(?!oil)|\b(?:aptamil|aptamil|similac|\bnan\b|s-26|s26|enfamil|bebelac|novalac|premikid|pellargon|frisolac|hipp\b)\b|stage\s*[1-4]|مرحلة\s*[1-4]|مواليد\s*حليب)/i },
   // --- diapers
-  { need: 'diapers', cat: ['baby-products'], re: /حفاض|حفاظ|پامبرس|بامبرس|diaper|napp|pull.?up|سروال\s*(?:اطفال|أطفال)|pants/i },
-  { need: 'baby-wipes', cat: ['baby-products', 'disposables'], re: /مناديل\s*(?:اطفال|أطفال|\s*مبلله|مبللة)|baby\s*wipe|wipe/i },
+  { need: 'diapers', cat: ['baby-products'], nf: true, re: /^(?!.*(?:(?:rash|nappy)\s*cream|كريم\s*(?:التهاب|الحفاض)|مرهم|ointment|adult|للبالغين|كبار\s*السن|senior)).*(?:حفاض|حفاظ|پامبرس|بامبرس|diaper|napp|pull.?up|سروال\s*(?:اطفال|أطفال)|pants)/i },
+  { need: 'baby-wipes', cat: ['baby-products', 'disposables'], nf: true, re: /^(?!.*(?:pet|cat|dog|حيوان|قطط|كلاب|kitchen|مطبخ|micellar|ميستلار|مطهر|disinfect|antibacterial|facial|للوجه|surface|سطح|multi\s*action|hand)).*(?:مناديل\s*(?:اطفال|أطفال|\s*مبلله|مبللة)|baby\s*wipe|wipe)/i },
   { need: 'baby-food', cat: ['baby-products'], re: /cerelac|طعام\s*(?:اطفال|أطفال)|baby\s*food|gerber/i },
   // --- milk: flavored FIRST (vanilla/dates/rose/latte etc are flavored)
-  { need: 'milk.flavored', cat: ['milk'], re: /بنكهة|نكهة|شوكولاتة|فراولة|موز|فانيلا|فانيليا|تمر|ورد|قهوة\s*حليب|لاتيه|flavou?r|chocolate|choco|strawb|banana|vanil|dates\s*milk|rose\s*milk|latte|koel|kool|nijoom|نجم/i },
+  { need: 'milk.flavored', cat: ['milk'], nf: true, re: /^(?!.*(?:\bbar\b|بار\b|أقراص|praline|برالين|spread|قابلة\s*للدهن|candy|حلوى|biscuit|بسكويت|cookie|كوكيز|دانك|donut|donut|كيك|cake|\bmilk\s+chocolate\b|hair|شعر|كريم|cream|lotion|body\s*wash|chocolate\s+(?:bar|bag|pouch|covered|coins|eggs|block|spread))).*(?:بنكهة|نكهة|شوكولاتة|فراولة|موز|فانيلا|فانيليا|تمر|ورد|قهوة\s*حليب|لاتيه|flavou?r|chocolate|choco|strawb|banana|vanil|dates\s*milk|rose\s*milk|latte|koel|kool|nijoom|نجم)/i },
   // --- fresh milk (chilled short shelf)
   { need: 'milk.fresh.full', cat: ['milk'], re: /طازج|fresh\s*milk|fresh.*(milk|full)|full.*(fresh|cream.*milk)|كامل\s*(?:الدسم|القشدة)/i },
   { need: 'milk.fresh.low', cat: ['milk'], re: /طازج.*(خالي|قليل|منزوع)|fresh.*(skim|low.?fat|fat.?free|2%|1%)/i },
@@ -265,9 +266,9 @@ const RULES: Rule[] = [
   { need: 'butter', cat: ['butter-cream'], re: /زبدة|زبده|سمن|butter|ghee|lurpak|بلدي\s*زبد/i },
   { need: 'cream', cat: ['butter-cream'], re: /قشطة|قشطه|كريمة|كريمه|cream|قيمر|kimmer/i },
   // --- essentials
-  { need: 'eggs', cat: ['eggs'], re: /.*/ },
-  { need: 'bread', cat: ['bakery'], re: /خبز|خبزه|توست|صمون|شراق|toast|bread|baguette|باتون/i },
-  { need: 'rice', cat: ['rice-pasta-grains'], re: /أرز|ارز|رز\s|بسمتي|rice|basmati|ابو\s*كاس|أبو\s*كاس/i },
+  { need: 'eggs', cat: ['eggs'], nf: true, re: /^(?!.*(?:shampoo|شامبو|hair|للشعر|body\s*wash|pasta|مكرونة|لاسانيا|lasagne|lasagna|noodle|separator|فاصل|مسكن|pain\s*reliever|بسكويت|biscuit|rusk|كيك|cake|ملقط|tong|بقسماط|crumb)).*(?:بيض|\begg|دزينة|دزينه|dozen)/i },
+  { need: 'bread', cat: ['bakery'], nf: true, re: /^(?!.*(?:crumb|بقسماط|rusk|بسكويت|biscuit|tong|ملقط|bites|بايتس|فتات)).*(?:خبز|خبزه|توست|صمون|شراق|toast|bread|baguette|باتون)/i },
+  { need: 'rice', cat: ['rice-pasta-grains'], nf: true, re: /^(?!.*(?:flour|دقيق|نودلز|noodle|vermicelli|شعرية|cracker|كراكر|cake|كعك|بسكويت|biscuit|cookie|كوكيز|milk|حليب|paper|ورق|starch|نشا|syrup|شراب|gluten|بقسماط|crumb|puff|منفوخ|أرز\s*حلو|بوب\s*كورن|pop\s*corn|puttu|بوتو|بودي\s*أرز)).*(?:أرز|ارز|رز\s|بسمتي|rice|basmati|ابو\s*كاس|أبو\s*كاس)/i },
   { need: 'pasta', cat: ['rice-pasta-grains'], re: /مكرونة|مكرونه|معكرونة|باستا|pasta|spaghetti|penne|fusilli|macaroni|نودلز|noodle|شعرية|vermicelli/i },
   { need: 'pulses', cat: ['rice-pasta-grains', 'fruits-vegetables', 'canned-food'], re: /عدس|فاصوليا|حمص|برغل|دال\b|masoor|moong|chana|urad|lentil|chickpea|beans\b|بازلاء|peas|matar/i },
   { need: 'oats', cat: ['rice-pasta-grains', 'breakfast-cereals'], re: /شوفان|oat/i },
@@ -278,14 +279,14 @@ const RULES: Rule[] = [
   { need: 'vinegar', cat: ['cooking-oils'], re: /خل\b|خل\s|vinegar/i },
   // --- proteins
   { need: 'meat.processed', cat: ['meat-poultry'], re: /مرتديلا|مورتديلا|سلامي|بسطرمة|لانشون|mortadella|salami|pastrami|luncheon|pepperoni|نقانق|sausage|susage|frank|فرانك|سجق|برجر|burger|كباب\s*مصنع|شاورما\s*مصنعة|bacon|بيكون|همبرجر|هامبرجر|باربري|strips?\s*\d|كرات\s*لحم|meatball| Nuggets|ناجتس| nugget/i },
-  { need: 'chicken', cat: ['meat-poultry', 'frozen-food'], nf: true, re: /^(?!.*(?:مرقة|stock|broth|شوربة|soup|معجون|صلص|sauce|توابل|spice|بودرة|بودر|powder|cube|مكعب|نودل|noodle|كبسولة|capsule|frank|فرانك|سجق|ناجت|nugget|شاورما|strips|pet|قطط|كلاب|kitten|puppy|dog|cat\b|طعوم\s*حيوانات|masala|curry|كاري|بهار|خلطة|mix|blend|marinade|تتبيلة)).*(?:دجاج|صدور?\s*دجاج|chicken|breast|فيليه\s*دجاج|whole\s*chicken)/i },
+  { need: 'chicken', cat: ['meat-poultry', 'frozen-food'], nf: true, re: /^(?!.*(?:مرقة|stock|broth|شوربة|soup|معجون|صلص|sauce|توابل|spice|بودرة|بودر|powder|cube|مكعب|نودل|noodle|ramen|رامن|كبسولة|capsule|frank|فرانك|سجق|ناجت|nugget|شاورما|strips|pet|قطط|كلاب|kitten|puppy|dog|cat\b|طعوم\s*حيوانات|masala|curry|كاري|بهار|خلطة|mix|blend|marinade|تتبيلة|turkey|ديك\s*رومي|رومي)).*(?:دجاج|صدور?\s*دجاج|chicken|breast|فيليه\s*دجاج|whole\s*chicken)/i },
   { need: 'meat.red', cat: ['meat-poultry'], nf: true, re: /^(?!.*(?:مرقة|stock|broth|شوربة|soup|معجون|صلص|sauce|توابل|spice|بودرة|بودر|powder|cube|مكعب|frank|فرانك|سجق|ناجت|nugget|شاورما|pet|قطط|كلاب|kitten|puppy|dog|cat\b|masala|curry|كاري|بهار|خلطة|marinade|تتبيلة)).*(?:لحم|بقري|غنم|حاشي|beef|lamb|mutton|mince|برجر\s*لحم|kebab|بطريق)/i },
-  { need: 'fish', cat: ['fish-seafood'], nf: true, re: /^(?!.*(?:sauce|صلص|خل|vinegar|essence|خلاصة|معجون|بودرة|بودر|paste|زيت|oil|توابل|spice|مرقة|broth|stock|شوربة|soup|masala|curry|كاري|بهار|condiment|pickle|مخلل|colou?r|صبغ|ملون|مسحوق|flake|رقائق|chips|سناكس|snack|كريكر|cracker)).*(?:سمك|فيليه|روبيان|جمبري|قروص|سرطان|تونة|سلطون|سلمون|هامور|شعري|صافي|كنعد|قنبر|ميكر|سلقور|بيض\s*سمك|fish|tuna|salmon|shrimp|prawn|crab|sardine|mackerel|fillet|seafood)/i },
+  { need: 'fish', cat: ['fish-seafood'], nf: true, re: /^(?!.*(?:sauce|صلص|خل|vinegar|essence|خلاصة|معجون|بودرة|بودر|paste|زيت|oil|توابل|spice|مرقة|broth|stock|شوربة|soup|masala|curry|كاري|بهار|condiment|pickle|مخلل|colou?r|صبغ|ملون|مسحوق|flake|رقائق|chips|سناكس|snack|كريكر|cracker|pet\s*food|cat\s*food|dog\s*food|طعام\s*(?:قطط|كلاب|حيوان)|قطط|كلاب|kitten|puppy|\bcat\b|\bdog\b|\bpet\b|aquarium|حوض)).*(?:سمك|فيليه|روبيان|جمبري|قروص|سرطان|تونة|سلطون|سلمون|هامور|شعري|صافي|كنعد|قنبر|ميكر|سلقور|بيض\s*سمك|fish|tuna|salmon|shrimp|prawn|crab|sardine|mackerel|fillet|seafood)/i },
   // --- produce
   { need: 'vegetables', cat: ['fruits-vegetables'], nf: true, re: /^(?!.*(?:essence|خلاصة|معجون|صلص|بودر|powder|sauce|spice|توابل|خل|vinegar|عصير|juice|nectar|شراب|syrup|flavou?r|نكهة|زيت|oil|شامبو|shampoo|صابون|soap|مكمل|supplement|حبوب|capsule|أقراص|colou?r|صبغ|ملون|masala|curry|كاري|بهار|condiment|pickle|مخلل|بذور|seed|نبات|plant|عسل|honey|شمع|wax|سكر|ملح|salt|خلطة|mix|blend)).*(?:خض|بندورة|طماطم|بطاطا|بصل|ثوم|جزر|خيار|كوسة|باذنجان|ملفوف|بروكلي|سبانخ|خس|فلفل|بامية|بازلاء|ذرة\s*حلوة|lettuce|tomato|potato|onion|carrot|cucumber|zucchini|cabbage|broccoli|spinach|pepper|okra|veg)/i },
   { need: 'fruits', cat: ['fruits-vegetables'], nf: true, re: /^(?!.*(?:essence|خلاصة|معجون|صلص|بودر|powder|sauce|spice|توابل|خل|vinegar|مجفف|dried|عصير|juice|nectar|شراب|syrup|flavou?r|نكهة|زيت|oil|شامبو|shampoo|صابون|soap|جل|gel|كريم|cream|مكمل|supplement|dish|جلي|wash|clean|منظف|معطر|freshener|كلين|حبوب|capsule|tablet|أقراص|شاي|tea|coffee|قهوة|colou?r|صبغ|ملون|masala|curry|كاري|بهار|condiment|pickle|مخلل|قشر|peel|بذور|seed|نبات|plant|stock|مرقة|broth|cube|مكعب|\bdry\b|dry\s|مسحوق|عسل|honey|شمع|wax|ديتوكس|detox|سكر|sugar|ملح|salt|خلطة|mix|blend|عضم|bone|جلد|skin)).*(?:تفاح|موز|برتقال|عنب|بطيخ|شمام|مانجو|فراولة|ليمون|جوافة|رمان|كيوي|دراق|خوخ|كاكا|apple|banana|orange|grape|melon|mango|strawberry|lemon|guava|pomegranate|kiwi|peach|plum|fruit)/i },
   // --- drinks
-  { need: 'water', cat: ['water'], re: /.*/ },
+  { need: 'water', cat: ['water'], nf: true, re: /^(?!.*(?:rose|ورد|micellar|ميستلار|معطر|عطر|perfume|flavou?r|نكهة|بنكهة|pen|قلم|colour|color|صبغ|ملون|stainless|steel|ستانلس|thermos|ترمس|flask|soda|dispenser|فلتر|filter|مقطر|distilled|اكسجين|oxygen|غسول|wash|كلين|clean|مزيل|spray|بخاخ|thermal|حراري|in\s*water|in\s*brine|in\s*oil|anis|يانسون|كراويا)).*(?:مياه|ماء|\bwater\b|aquafina|barari|masafi|evian|volvic|pure\s*life|nestle\s*pure)/i },
   { need: 'juice', cat: ['juices'], re: /.*/ },
   { need: 'soft-drinks', cat: ['soft-drinks'], re: /.*/ },
   { need: 'energy-drinks', cat: ['energy-drinks'], re: /.*/ },
@@ -293,8 +294,8 @@ const RULES: Rule[] = [
   { need: 'coffee', cat: ['coffee-tea'], re: /قهوة|بن\s|قهوه|نسكافيه|coffee|espresso|nescafe|davidoff|lazenga|زلاتة|capsule|كبسولات|3\s*في\s*1|بريد/i },
   { need: 'tea', cat: ['coffee-tea'], re: /شاي|تي\s?بانكت|tea|lipton|ahmad|ربيع|green\s*tea|أخضر/i },
   // --- household
-  { need: 'toilet-paper', cat: ['disposables'], re: /تواليت|wc\b|toilet\s*(?:paper|roll|tissue)|ورق\s*حمام/i },
-  { need: 'tissues', cat: ['disposables'], re: /مناديل|tissue|napkin|فوطة\s*ورق/i },
+  { need: 'toilet-paper', cat: ['disposables', 'household-cleaning'], nf: true, re: /تواليت|wc\b|toilet\s*(?:paper|roll|tissue)|ورق\s*حمام|ورق\s*صحي|ماكسي\s*تواليت|(?:(?!.*(?:kitchen|مطبخ))(?:.*)maxi\s*(?:tissue\s*)?rolls?|(?:.*)ماكسي\s*(?:مناديل\s*)?رول)/i },
+  { need: 'tissues', cat: ['disposables', 'household-cleaning'], nf: true, re: /^(?!.*(?:kitchen|مطبخ|تواليت|toilet|حمام|maxi|ماكسي)).*(?:مناديل|tissue|napkin|فوطة\s*ورق)/i },
   { need: 'garbage-bags', cat: ['disposables'], re: /نفايات|قمامة|garbage|trash|rubbish|bin\s*liner/i },
   { need: 'kitchen-towel', cat: ['disposables'], re: /منشفة|مناشف|kitchen\s*(?:towel|paper)|foil|ألمنيوم|المنيوم|aluminum|cling|food\s*wrap|container|حاوية/i },
   { need: 'laundry', cat: ['household-cleaning'], re: /غسيل|مسحوق|اولين|persil|\bomo\b|ariel|tide\b|detergent|بالآلة|الات\s*الغسيل|comfort|lenor/i },

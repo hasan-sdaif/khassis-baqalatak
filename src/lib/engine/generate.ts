@@ -1178,11 +1178,11 @@ function productMatchesNeed(product: CatalogProduct, needId: string): boolean {
   const excludes = (...patterns: RegExp[]) => patterns.some((pattern) => pattern.test(name))
   switch (needId) {
     case 'eggs':
-      return has(/\beggs?\b/i, /بيض/) && !excludes(/\beggplant\b/i, /\begg\s*(?:noodle|pasta)\b/i, /\b(?:dessert|custard|cake|mayonnaise|mayo|biscuit|cookie)\b/i, /\bبيض\s*(?:بودرة|مجفف للخبز)\b/)
+      return has(/\beggs?\b/i, /بيض/) && !excludes(/\beggplant\b/i, /\begg\s*(?:noodle|pasta)\b/i, /\b(?:dessert|custard|cake|mayonnaise|mayo|biscuit|cookie)\b/i, /\bبيض\s*(?:بودرة|مجفف للخبز)\b/, /\b(?:shampoo|hair\s*(?:care|mask|oil)|body\s*wash)\b/i, /شامبو|للشعر/, /\b(?:lasagne?|macaroni|spaghetti|noodle)\b/i, /لاسانيا|مكرونة/, /\b(?:separator|tong)s?\b/i, /ملقط|فاصل/, /\bpain\s*reliever\b|\bمسكن\b/)
     case 'chicken':
       return has(/\bchicken\b/i, /دجاج/) && !excludes(/\b(?:stock|broth|bouillon|seasoning|flavou?red|noodles?|chips?|crisps?)\b/i, /مرقة|مكعبات|بهارات|شيبس/, /\bvegetarian\b/i)
     case 'bread':
-      return has(/\b(?:bread|toast|loaf|pita|naan|tortilla|flatbread|bun|roti)\b/i, /خبز|توست|صمون|رقاق|تورتيلا|روتي/) && !excludes(/\b(?:crumbs?|cake|biscuits?|cookies?|crackers?|flour|breaded)\b/i, /كيك|بسكويت|كعك|بقسماط|فتات الخبز/)
+      return has(/\b(?:bread|toast|loaf|pita|naan|tortilla|flatbread|bun|roti)\b/i, /خبز|توست|صمون|رقاق|تورتيلا|روتي/) && !excludes(/\b(?:crumbs?|cake|biscuits?|cookies?|crackers?|flour|breaded|rusk|bites)\b/i, /كيك|بسكويت|كعك|بقسماط|فتات الخبز|بايتس/)
     case 'shampoo':
       return has(/\bshampoo\b/i, /شامبو/)
     case 'toothpaste':
@@ -1192,19 +1192,29 @@ function productMatchesNeed(product: CatalogProduct, needId: string): boolean {
     case 'formula':
       return has(/\b(?:infant|baby|follow-on|growing\s*up)\s*(?:milk\s*)?formula\b/i, /\bformula\b/i, /\binfant\s+milk\b/i, /\bbaby\s+milk\b/i, /حليب\s*(?:الأطفال|اطفال|للأطفال|للرضع|الرضع|رضع|الرضيع)/) && !excludes(/\b(?:pediasure|pedia\s*sure|ensure|adult\s*nutrition)\b/i, /بيدياشور|إنشور|انشور|مكمل\s*غذائي\s*للبالغين/)
     case 'diapers':
-      return has(/\bdiapers?\b/i, /حفاض(?:ات|ة)?/) && !excludes(/\badult\b/i, /للبالغين|كبار\s*السن/)
+      return has(/\bdiapers?\b/i, /حفاض(?:ات|ة)?/) && !excludes(/\badult\b/i, /للبالغين|كبار\s*السن/, /\b(?:cream|ointment|rash)\b/i, /كريم|مرهم|التهاب|تسلخ/)
     case 'baby-wipes':
-      return has(/\b(?:baby\s*)?(?:wet\s*)?wipes?\b/i, /مناديل\s*(?:أطفال|اطفال|مبللة)/)
+      return has(/\b(?:baby\s*)?(?:wet\s*)?wipes?\b/i, /مناديل\s*(?:أطفال|اطفال|مبللة)/) && !excludes(/\b(?:pet|cat|dog|kitchen)\b/i, /قطط|كلاب|حيوان|مطبخ/, /\b(?: disinfect|antibacterial)\b/i, /مطهر/)
     case 'toilet-paper':
       return has(/\btoilet\s*(?:paper|tissue|rolls?)\b/i, /ورق\s*التواليت/, /مناديل\s*المرحاض/)
     case 'tissues':
-      return has(/\b(?:facial\s*)?tissues?\b/i, /مناديل\s*(?:ورقية|وجه|جيب)/) && !excludes(/\btoilet\s*(?:paper|tissue|rolls?)\b/i, /ورق\s*التواليت/, /مناديل\s*(?:أطفال|اطفال|مبللة)/)
+      return has(/\b(?:facial\s*)?tissues?\b/i, /مناديل\s*(?:ورقية|وجه|جيب)/) && !excludes(/\btoilet\s*(?:paper|tissue|rolls?)\b/i, /ورق\s*التواليت/, /مناديل\s*(?:أطفال|اطفال|مبللة)/, /\b(?:kitchen|household)\s*(?:towel|roll|paper)\b/i, /مناديل\s*مطبخ|مناشف\s*مطبخ/, /\bmaxi\s*rolls?\b/i, /ماكسي/)
     case 'water':
-      return has(/\bwater\b/i, /مياه/, /ماء/) && !excludes(/\b(?:flavou?red|rose|perfume|micellar)\s*water\b/i, /ماء\s*ورد/)
+      return has(/\bwater\b/i, /مياه/, /ماء/) && !excludes(/\b(?:flavou?red|rose|perfume|micellar|distilled|oxygen|sparkling|tonic)\s*water\b/i, /ماء\s*ورد|ماء\s*مقطر/, /\b(?:pen|pens|colour|colou?r|marker)\b/i, /قلم|صبغ|ملون/, /\b(?:stainless|steel|thermos|flask|sport)\s*(?:bottle|steel)\b/i, /ستانلس|ترمس|قارورة\s*رياضية/, /\bwater\s*(?:dispenser|filter|purifier)\b/i, /براد|فلتر|موزع\s*ماء/)
     case 'rice':
-      return has(/\brice\b/i, /أرز|ارز|رز/) && !excludes(/\b(?:rice\s*flour|rice\s*crackers?|rice\s*cakes?)\b/i, /دقيق\s*الأرز|كعك\s*الأرز/)
+      return has(/\brice\b/i, /أرز|ارز|رز/) && !excludes(/\b(?:rice\s*flour|rice\s*crackers?|rice\s*cakes?|rice\s*noodles?|rice\s*vermicelli|rice\s*milk|rice\s*paper|rice\s*starch|rice\s*syrup|rice\s*puff?s?|popped\s*rice)\b/i, /دقيق\s*الأرز|كعك\s*الأرز|نودلز\s*الأرز|شعرية\s*الأرز|حليب\s*الأرز|ورق\s*الأرز|نشا\s*الأرز/)
     case 'pulses':
       return has(/\b(?:lentils?|chickpeas?|chana|beans?|peas?|pulses?)\b/i, /عدس|حمص|فاصوليا|لوبيا|بازلاء|فول/)
+    case 'fish':
+      return has(/\b(?:fish|tuna|salmon|shrimp|prawn|crab|sardine|mackerel|fillet|seafood)\b/i, /سمك|فيليه|روبيان|جمبري|تونة|سلمون|هامور|شعري|صافي|كنعد/) && !excludes(/\b(?:pet|cat|dog)\s*food\b/i, /طعام\s*(?:قطط|كلاب|حيوان)/, /\b(?:cat|dog|kitten|puppy|aquarium)\b/i, /قطط|كلاب|حوض/, /\b(?:fish\s*(?:sauce|oil|paste|soup)|bouillon|stock|flakes?)\b/i, /زيت\s*سمك|معجون\s*سمك|مرقة/)
+    case 'meat.red':
+      return has(/\b(?:beef|lamb|mutton|mince|kebab)\b/i, /لحم|بقري|غنم|حاشي/) && !excludes(/\b(?:pet|cat|dog)\s*food\b/i, /طعام\s*(?:قطط|كلاب|حيوان)/, /\b(?:stock|broth|bouillon|seasoning|masala|curry|marinade)\b/i, /مرقة|مكعبات|بهارات|كاري/, /\b(?:sausage|frankfurter|nugget|burger\s*patty)\b/i, /نقانق|سجق|ناجتس/)
+    case 'vegetables':
+      return has(/\b(?:vegetable|tomato|potato|onion|carrot|cucumber|lettuce|broccoli|spinach|pepper|okra|veg)\w*\b/i, /خض|بندورة|طماطم|بطاطا|بصل|ثوم|جزر|خيار|كوسة|ملفوف|بروكلي|سبانخ|خس|فلفل|بامية|بازلاء|ذرة/) && !excludes(/\b(?:vegetable\s*(?:stock|broth|soup|powder|paste|oil)|bouillon|seasoning|masala|curry)\b/i, /مرقة|مكعبات|بهارات|معجون\s*(?:طماطم|بندورة)|دبس/, /\b(?:seeds?|dried)\b/i, /بذور/)
+    case 'fruits':
+      return has(/\b(?:apple|banana|orange|grape|melon|mango|strawberry|lemon|guava|pomegranate|kiwi|peach|plum|fruit)\w*\b/i, /تفاح|موز|برتقال|عنب|بطيخ|شمام|مانجو|فراولة|ليمون|جوافة|رمان|كيوي|دراق|خوخ|فواكه/) && !excludes(/\b(?:jelly|candy|juice|nectar|jam|flavou?red|dried|essence)\b/i, /جيلي|عصير|شراب|نكهة|مربى|معطر/, /\b(?:shampoo|lotion|body\s*wash|gel|cream|soap)\b/i, /شامبو|لوشن|كريم/)
+    case 'milk.flavored':
+      return has(/\b(?:milk|choco\s*milk|latte)\b/i, /حليب|لبن/) && !excludes(/\b(?:bar|praline|spread|candy|biscuit|cookie|donut|cake)\b/i, /بار\b|برالين|حلوى|بسكويت|كوكيز|كيك/)
     default:
       return true
   }
@@ -1213,6 +1223,13 @@ function productMatchesNeed(product: CatalogProduct, needId: string): boolean {
 function formatFilsForNote(fils: number): string {
   return (fils / 1000).toFixed(3)
 }
+
+/** needs with a name-based semantic guard (productMatchesNeed switch keys) */
+const GUARDED_NEED_IDS: ReadonlySet<string> = new Set([
+  'eggs', 'chicken', 'bread', 'shampoo', 'toothpaste', 'soap', 'formula', 'diapers',
+  'baby-wipes', 'toilet-paper', 'tissues', 'water', 'rice', 'pulses', 'fish',
+  'meat.red', 'vegetables', 'fruits', 'milk.flavored',
+])
 
 // ---------------------------------------------------------------------------
 // diagnostics
@@ -1450,8 +1467,20 @@ function solveEnvelope(
   for (const g of matchedGroups) {
     for (const p of catalog.products) {
       if (seen.has(p.id)) continue
-      if (p.need && g.needs.includes(p.need)) { seen.add(p.id); pool.push(p); continue }
-      if (g.categories.includes(p.category)) { seen.add(p.id); pool.push(p); continue }
+      if (p.need && g.needs.includes(p.need)) {
+        // semantic contamination guard (F-031): a product stored under a
+        // high-risk need must still look like that need by NAME before it can
+        // enter an envelope assortment — same rule the plan candidates use.
+        if (!productMatchesNeed(p, p.need)) continue
+        seen.add(p.id); pool.push(p); continue
+      }
+      if (g.categories.includes(p.category)) {
+        // category-matched entries must satisfy the group's guarded needs when
+        // the group declares any (e.g. produce groups keep stocks/seasonings out)
+        const guardedNeeds = g.needs.filter((n) => GUARDED_NEED_IDS.has(n))
+        if (guardedNeeds.length && !guardedNeeds.some((n) => productMatchesNeed(p, n))) continue
+        seen.add(p.id); pool.push(p); continue
+      }
       if (g.keywords.length) {
         const hay = `${p.nameAr} ${p.nameEn} ${p.brand ?? ''}`.toLowerCase()
         if (g.keywords.some((kw) => hay.includes(kw))) { seen.add(p.id); pool.push(p); continue }

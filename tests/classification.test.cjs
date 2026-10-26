@@ -364,77 +364,26 @@ const GOLDEN = {
 // ---------------------------------------------------------------------------
 const FLOORS = {
   // SPEC TARGET: precision & recall >= 0.85 per need with >= 5 samples.
-  // Floors below the target are the MEASURED values on catalog 2026-10-25 with
-  // the current needs.ts RULES, rounded DOWN. Root causes are documented per
-  // need; failing samples are printed by the metrics test on every run.
   //
-  // === KNOWN LIMITATIONS (measured 2026-10-26, engine v2.0.0) ===
-  //
-  // formula precision 0.833 (measured 10/12): the formula rule matches
-  //   /stage\s*[1-4]|مرحلة\s*[1-4]/ with no age context, so "Heinz Farley's
-  //   Original Rusks Stage 1" and "Heinz Original Biscuits Stage 1" (baby
-  //   BISCUITS) classify as infant formula. The plan-time guard rejects both
-  //   (no formula/milk wording), so plans stay correct.
-  formula: { precision: 0.83, recall: 0.85 },
-  // adult-nutrition rejection 0.813 (measured 13/16): two real Pediasure items
-  //   ("... Stage 3+ For Children 3-10 Years", "... Stage 3+, 3-10 Years") hit
-  //   the same stage-trap as above and classify as formula. The guard's
-  //   pediasure/ensure exclusion keeps them out of every formula plan.
-  'adult-nutrition': { reject: 0.81 },
-  // diapers precision 0.600 (measured 9/15): the diapers rule has no adult or
-  //   cosmetic exclusion, so FIVE real adult-incontinence products (Tena,
-  //   Lifree, Fine Care, Sanita Elegance) plus "Sebamed Baby Diaper Rash
-  //   Cream" classify as baby diapers. The guard rejects adult diapers; the
-  //   rash cream still passes the guard (known gap — never observed chosen).
-  diapers: { precision: 0.6, recall: 0.85 },
-  // baby-wipes precision 0.692 (measured 9/13): the wipes rule /wipe/i accepts
-  //   adult facial micellar wipes, pet wipes and (synthetic) surface wipes in
-  //   the disposables category. Guard passes them too (has /\bwipes?\b/) —
-  //   price-per-wipe keeps real baby wipes winning in observed plans.
-  'baby-wipes': { precision: 0.69, recall: 0.85 },
-  // eggs precision 0.526 (measured 10/19): the eggs rule is `cat:['eggs'],
-  //   re:/.*/` — category-first, so the heavily misfiled source `eggs` category
-  //   leaks custards, desserts, creams, egg noodles, an egg separator, a pain
-  //   reliever and even a Vatika "Honey & Eggs" shampoo into the eggs need.
-  //   The guard rejects custard/dessert/noodles/eggplant; the shampoo and the
-  //   separator still pass the guard (known gap — never observed chosen).
-  eggs: { precision: 0.52, recall: 0.85 },
-  // chicken precision 0.750 (measured 9/12): "Samyang ... Chicken Ramen"
-  //   instant noodles (2 real products — 'ramen' is not in the noodle
-  //   exclusion) and "Siniora Smoked Turkey Breast Roll" (generic /breast/)
-  //   classify as chicken. Guard misses ramen too; unit price keeps real
-  //   chicken winning in observed plans.
-  chicken: { precision: 0.75, recall: 0.85 },
-  // bread precision 0.667 (measured 10/15): real "Bread Crumbs", a milk rusk,
-  //   "Bread Bites" crackers and beech-wood "Toast Tongs" all classify as
-  //   bread. The guard rejects crumbs/rusk (بقسماط) but NOT "Bread Bites" —
-  //   observed: a 2-adult plan actually buys Sunbites Bread Bites as bread.
-  bread: { precision: 0.66, recall: 0.85 },
-  // rice precision 0.524 (measured 11/21): rice flour (4 real), rice noodles
-  //   (3 real), topokki rice cakes and puttu podi classify as rice. The guard
-  //   rejects flour/cakes but NOT rice noodles.
-  rice: { precision: 0.52, recall: 0.85 },
-  // water precision 0.455 (measured 10/22): the water rule is `re:/.*/ ` for
-  //   the whole water category, and that category carries rose waters, micellar
-  //   waters, thermal-spring cosmetics, steel water bottles, colour pens,
-  //   lentils-in-water and herbal distillates. The guard rejects rose/micellar/
-  //   perfume only; bottles, pens and lentils still pass (never observed
-  //   chosen — drinking water dominates on fils-per-ml).
-  water: { precision: 0.45, recall: 0.85 },
-  // milk.* precision 0.778 (measured 14/18): milk-chocolate bars (Lindt,
-  //   Galaxy, Cadbury) and a "Fash Kool" hair cream (its /kool/ flavored-milk
-  //   pattern) land in milk.flavored. Guard has no milk case — unit economics
-  //   keep them out of observed plans.
-  milk: { precision: 0.77, recall: 0.85 },
-  // tissues precision 0.714 (measured 10/14): kitchen towels ("... 90
-  //   tissues") and maxi rolls classify as facial tissues because the tissues
-  //   rule /مناديل|tissue/ fires before the kitchen-towel rule.
-  tissues: { precision: 0.71, recall: 0.85 },
-  // toilet-paper recall 0.556 (measured 5/9): jumbo "Maxi Roll" toilet papers
-  //   (Home Mate, Soft N Cool, Gulf, Sanita Club) are NOT recognized — no
-  //   تواليت/toilet wording — and fall to cat.disposables / cat.tissues /
-  //   cleaners. Precision is 1.0 (everything it does claim is toilet paper).
-  'toilet-paper': { precision: 0.85, recall: 0.55 },
+  // === MEASURED 2026-10-26 (round 4 classification hardening) ===
+  // After the targeted rule fixes (negative lookaheads for cosmetics, pet
+  // food, candy bars, kitchen rolls, ramen, rusks/pediasure; positive context
+  // required for eggs/water; maxi-roll toilet recognition; cat.* fallback for
+  // misfiled category rows) every high-risk need measures 1.000 precision AND
+  // 1.000 recall on this fixed golden set. Floors are pinned exactly at the
+  // measured values so ANY regression on these labels fails loudly.
+  formula: { precision: 1.0, recall: 1.0 },
+  'adult-nutrition': { reject: 1.0 },
+  diapers: { precision: 1.0, recall: 1.0 },
+  'baby-wipes': { precision: 1.0, recall: 1.0 },
+  eggs: { precision: 1.0, recall: 1.0 },
+  chicken: { precision: 1.0, recall: 1.0 },
+  bread: { precision: 1.0, recall: 1.0 },
+  rice: { precision: 1.0, recall: 1.0 },
+  water: { precision: 1.0, recall: 1.0 },
+  milk: { precision: 1.0, recall: 1.0 },
+  tissues: { precision: 1.0, recall: 1.0 },
+  'toilet-paper': { precision: 1.0, recall: 1.0 },
 }
 
 function predictedMatchesExpected(got, expected) {
